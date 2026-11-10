@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <string name="app_name" translatable="false">RepoShelf</string>
+
+    <string name="nav_discover">Discover</string>
+    <string name="nav_my_apps">My apps</string>
+    <string name="nav_updates">Updates</string>
+    <string name="nav_sources">My sources</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="search_hint">Search apps</string>
+    <string name="action_clear_search">Clear search</string>
+    <string name="action_refresh_catalog">Refresh catalog</string>
+    <string name="category_all">All</string>
+    <string name="category_filter_label">Category filter</string>
+
+    <string name="category_communication">Communication</string>
+    <string name="category_development">Development</string>
+    <string name="category_education">Education</string>
+    <string name="category_games">Games</string>
+    <string name="category_graphics">Graphics</string>
+    <string name="category_internet">Internet</string>
+    <string name="category_maps">Maps</string>
+    <string name="category_multimedia">Multimedia</string>
+    <string name="category_productivity">Productivity</string>
+    <string name="category_reading">Reading</string>
+    <string name="category_science">Science</string>
+    <string name="category_security">Security</string>
+    <string name="category_system">System</string>
+    <string name="category_utilities">Utilities</string>
+    <string name="category_other">Other</string>
+
+    <string name="results_empty">No apps match your search.</string>
+    <string name="catalog_empty">No catalog is available yet.</string>
+    <string name="catalog_loading">Loading catalog…</string>
+    <plurals name="catalog_app_count">
+        <item quantity="one">%d app in the catalog</item>
+        <item quantity="other">%d apps in the catalog</item>
+    </plurals>
+    <string name="catalog_disclaimer">Being listed in the catalog is not a security certification.</string>
+
+    <string name="status_bundled">Built-in catalog – not yet updated from the internet.</string>
+    <string name="status_last_updated">Catalog updated: %1$s</string>
+    <string name="status_update_failed">Catalog update failed: %1$s. The last valid catalog is shown.</string>
+    <string name="status_unsupported">A newer catalog format is available. Update RepoShelf to receive catalog updates.</string>
+    <string name="status_expired">The catalog has not been renewed recently and may be out of date.</string>
+
+    <string name="error_network">no internet connection or the server is unreachable</string>
+    <string name="error_http">the server returned an error (%1$s)</string>
+    <string name="error_rate_limited">too many requests, please try again later</string>
+    <string name="error_policy">the response was blocked by a security rule</string>
+    <string name="error_invalid">the downloaded catalog is invalid</string>
+    <string name="error_rejected">the downloaded catalog is older than the current one</string>
+    <string name="error_unsupported">the catalog format is newer than this app supports</string>
+
+    <string name="refresh_updated">Catalog updated.</string>
+    <string name="refresh_unchanged">The catalog is up to date.</string>
+    <string name="refresh_failed">Catalog update failed: %1$s</string>
+
+    <string name="placeholder_in_development">This screen is under development.</string>
+    <string name="placeholder_my_apps">Installed and followed apps will appear here.</string>
+    <string name="placeholder_updates">Available updates and update checks will appear here.</string>
+    <string name="placeholder_sources">GitHub repositories you add yourself will appear here.</string>
+    <string name="placeholder_settings">Update, notification, network, display and security settings will appear here.</string>
+</resources>

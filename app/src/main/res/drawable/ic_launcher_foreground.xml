@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Saját, egyszerű ikon: három „könyv” egy polcon (munkanév: RepoShelf). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M34,36h10v32h-10z" />
+    <path android:fillColor="#FFCFE6F5" android:pathData="M48,40h10v28h-10z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M61.5,38.2l9.6,-2.6l8.3,30.9l-9.6,2.6z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M28,70h52v5h-52z" />
+</vector>

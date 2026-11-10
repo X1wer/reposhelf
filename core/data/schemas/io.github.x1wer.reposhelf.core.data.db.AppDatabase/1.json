@@ -1,0 +1,246 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "daaea8ee1404e4c154ff10701c9772f5",
+    "entities": [
+      {
+        "tableName": "catalog_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `schemaVersion` INTEGER NOT NULL, `catalogSerial` INTEGER NOT NULL, `generatedAtMillis` INTEGER NOT NULL, `expiresAtMillis` INTEGER NOT NULL, `contentSha256` TEXT NOT NULL, `source` TEXT NOT NULL, `appCount` INTEGER NOT NULL, `rejectedCount` INTEGER NOT NULL, `etag` TEXT, `lastModified` TEXT, `acceptedAtMillis` INTEGER NOT NULL, `lastAttemptAtMillis` INTEGER, `lastSuccessAtMillis` INTEGER, `lastErrorKind` TEXT, `lastErrorDetail` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalogSerial",
+            "columnName": "catalogSerial",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generatedAtMillis",
+            "columnName": "generatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtMillis",
+            "columnName": "expiresAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentSha256",
+            "columnName": "contentSha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appCount",
+            "columnName": "appCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rejectedCount",
+            "columnName": "rejectedCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "etag",
+            "columnName": "etag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastModified",
+            "columnName": "lastModified",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "acceptedAtMillis",
+            "columnName": "acceptedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptAtMillis",
+            "columnName": "lastAttemptAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastSuccessAtMillis",
+            "columnName": "lastSuccessAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastErrorKind",
+            "columnName": "lastErrorKind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastErrorDetail",
+            "columnName": "lastErrorDetail",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "catalog_app",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`catalogId` TEXT NOT NULL, `name` TEXT NOT NULL, `provider` TEXT NOT NULL, `repoOwner` TEXT NOT NULL, `repoName` TEXT NOT NULL, `repositoryId` INTEGER, `packageName` TEXT, `signingCertSha256` TEXT NOT NULL, `minVersionCode` INTEGER, `keywords` TEXT NOT NULL, `category` TEXT NOT NULL, `assetFilter` TEXT, `searchName` TEXT NOT NULL, `searchKeywords` TEXT NOT NULL, PRIMARY KEY(`catalogId`))",
+        "fields": [
+          {
+            "fieldPath": "catalogId",
+            "columnName": "catalogId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repoOwner",
+            "columnName": "repoOwner",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repoName",
+            "columnName": "repoName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repositoryId",
+            "columnName": "repositoryId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "signingCertSha256",
+            "columnName": "signingCertSha256",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minVersionCode",
+            "columnName": "minVersionCode",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "keywords",
+            "columnName": "keywords",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assetFilter",
+            "columnName": "assetFilter",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "searchName",
+            "columnName": "searchName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "searchKeywords",
+            "columnName": "searchKeywords",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "catalogId"
+          ]
+        }
+      },
+      {
+        "tableName": "catalog_app_fts",
+        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS4(`searchName` TEXT NOT NULL, `searchKeywords` TEXT NOT NULL, content=`catalog_app`)",
+        "fields": [
+          {
+            "fieldPath": "searchName",
+            "columnName": "searchName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "searchKeywords",
+            "columnName": "searchKeywords",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": []
+        },
+        "ftsVersion": "FTS4",
+        "ftsOptions": {
+          "tokenizer": "simple",
+          "tokenizerArgs": [],
+          "contentTable": "catalog_app",
+          "languageIdColumnName": "",
+          "matchInfo": "FTS4",
+          "notIndexedColumns": [],
+          "prefixSizes": [],
+          "preferredOrder": "ASC"
+        },
+        "contentSyncTriggers": [
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_catalog_app_fts_BEFORE_UPDATE BEFORE UPDATE ON `catalog_app` BEGIN DELETE FROM `catalog_app_fts` WHERE `docid`=OLD.`rowid`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_catalog_app_fts_BEFORE_DELETE BEFORE DELETE ON `catalog_app` BEGIN DELETE FROM `catalog_app_fts` WHERE `docid`=OLD.`rowid`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_catalog_app_fts_AFTER_UPDATE AFTER UPDATE ON `catalog_app` BEGIN INSERT INTO `catalog_app_fts`(`docid`, `searchName`, `searchKeywords`) VALUES (NEW.`rowid`, NEW.`searchName`, NEW.`searchKeywords`); END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_catalog_app_fts_AFTER_INSERT AFTER INSERT ON `catalog_app` BEGIN INSERT INTO `catalog_app_fts`(`docid`, `searchName`, `searchKeywords`) VALUES (NEW.`rowid`, NEW.`searchName`, NEW.`searchKeywords`); END"
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'daaea8ee1404e4c154ff10701c9772f5')"
+    ]
+  }
+}

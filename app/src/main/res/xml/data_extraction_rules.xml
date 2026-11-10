@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Android 12+. A helyi adatbázis jelenleg csak a (bármikor újra letölthető) katalógust tartalmazza,
+     ezért nem mentjük. A végleges szabályok a 8. munkamenetben (docs/ARCHITECTURE.md 10.5.). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="." />
+    </device-transfer>
+</data-extraction-rules>

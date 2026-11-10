@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <string name="nav_discover">Felfedezés</string>
+    <string name="nav_my_apps">Alkalmazásaim</string>
+    <string name="nav_updates">Frissítések</string>
+    <string name="nav_sources">Saját források</string>
+    <string name="nav_settings">Beállítások</string>
+
+    <string name="search_hint">Alkalmazások keresése</string>
+    <string name="action_clear_search">Keresés törlése</string>
+    <string name="action_refresh_catalog">Katalógus frissítése</string>
+    <string name="category_all">Összes</string>
+    <string name="category_filter_label">Kategóriaszűrő</string>
+
+    <string name="category_communication">Kommunikáció</string>
+    <string name="category_development">Fejlesztés</string>
+    <string name="category_education">Oktatás</string>
+    <string name="category_games">Játékok</string>
+    <string name="category_graphics">Grafika</string>
+    <string name="category_internet">Internet</string>
+    <string name="category_maps">Térképek</string>
+    <string name="category_multimedia">Multimédia</string>
+    <string name="category_productivity">Produktivitás</string>
+    <string name="category_reading">Olvasás</string>
+    <string name="category_science">Tudomány</string>
+    <string name="category_security">Biztonság</string>
+    <string name="category_system">Rendszer</string>
+    <string name="category_utilities">Segédprogramok</string>
+    <string name="category_other">Egyéb</string>
+
+    <string name="results_empty">Nincs a keresésnek megfelelő alkalmazás.</string>
+    <string name="catalog_empty">Még nincs elérhető katalógus.</string>
+    <string name="catalog_loading">Katalógus betöltése…</string>
+    <plurals name="catalog_app_count">
+        <item quantity="one">%d alkalmazás a katalógusban</item>
+        <item quantity="other">%d alkalmazás a katalógusban</item>
+    </plurals>
+    <string name="catalog_disclaimer">A katalógusban szereplés nem jelent biztonsági tanúsítást.</string>
+
+    <string name="status_bundled">Beépített katalógus – még nem frissült az internetről.</string>
+    <string name="status_last_updated">Katalógus frissítve: %1$s</string>
+    <string name="status_update_failed">A katalógus frissítése nem sikerült: %1$s. A legutóbbi érvényes katalógus látható.</string>
+    <string name="status_unsupported">Újabb katalógusformátum érhető el. A katalógusfrissítésekhez frissítsd a RepoShelf alkalmazást.</string>
+    <string name="status_expired">A katalógus régóta nem frissült, lehet, hogy elavult.</string>
+
+    <string name="error_network">nincs internetkapcsolat, vagy a szerver nem érhető el</string>
+    <string name="error_http">a szerver hibát jelzett (%1$s)</string>
+    <string name="error_rate_limited">túl sok kérés, próbáld újra később</string>
+    <string name="error_policy">a választ egy biztonsági szabály elutasította</string>
+    <string name="error_invalid">a letöltött katalógus érvénytelen</string>
+    <string name="error_rejected">a letöltött katalógus régebbi a jelenleginél</string>
+    <string name="error_unsupported">a katalógus formátuma újabb, mint amit ez az alkalmazás ismer</string>
+
+    <string name="refresh_updated">A katalógus frissült.</string>
+    <string name="refresh_unchanged">A katalógus naprakész.</string>
+    <string name="refresh_failed">A katalógus frissítése nem sikerült: %1$s</string>
+
+    <string name="placeholder_in_development">Ez a képernyő fejlesztés alatt áll.</string>
+    <string name="placeholder_my_apps">Itt jelennek majd meg a telepített és a követett alkalmazások.</string>
+    <string name="placeholder_updates">Itt jelennek majd meg az elérhető frissítések és a frissítésellenőrzés.</string>
+    <string name="placeholder_sources">Itt jelennek majd meg a saját magad által hozzáadott GitHub-repók.</string>
+    <string name="placeholder_settings">Itt lesznek majd a frissítési, értesítési, hálózati, megjelenítési és biztonsági beállítások.</string>
+</resources>
