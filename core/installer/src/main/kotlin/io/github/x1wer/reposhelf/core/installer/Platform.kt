@@ -38,8 +38,18 @@ private fun PackageInfo.signerInfo(): SignerInfo? {
 }
 
 /**
- * Az APK ellenőrzése a készülék SAJÁT platform-verifierjével (D-031): a `getPackageArchiveInfo` a
- * `GET_SIGNING_CERTIFICATES` jelzővel valódi kriptográfiai ellenőrzést végez, ugyanazokkal a szabályokkal, mint a telepítés.
+ * A `getPackageArchiveInfo` jelzői. Android 9-en (API 28, emulátoron ellenőrizve) a nem telepített APK tanúsítványait a
+ * rendszer CSAK a régi `GET_SIGNATURES` jelzőre gyűjti be és ellenőrzi; a `GET_SIGNING_CERTIFICATES` önmagában üres
+ * `signingInfo`-t ad, így minden érvényes APK-t elutasítanánk (D-071). Ezért mindkét jelzőt átadjuk: a
+ * `GET_SIGNATURES` ellenőrzött módon (`skipVerify = false`) gyűjti be a tanúsítványokat, a kiértékelés viszont kizárólag
+ * a `signingInfo`-ra épül (a régi `signatures` mezőt nem használjuk).
+ */
+@Suppress("DEPRECATION")
+private const val ARCHIVE_SIGNING_FLAGS = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+
+/**
+ * Az APK ellenőrzése a készülék SAJÁT platform-verifierjével (D-031): a `getPackageArchiveInfo` a tanúsítványok
+ * begyűjtésekor valódi kriptográfiai ellenőrzést végez, ugyanazokkal a szabályokkal, mint a telepítés.
  * Érvénytelen vagy nem ellenőrizhető APK-ra `null`-t ad, `signingInfo` nélkül pedig nem fogadjuk el.
  *
  * Ismert korlát: az elemzés jelenleg az alkalmazás folyamatán belül fut. A külön folyamatban, időkorláttal történő
@@ -50,10 +60,10 @@ class PlatformApkInspector(private val context: Context) : ApkInspector {
         val pm = context.packageManager
         val info = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageArchiveInfo(file.path, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
+                pm.getPackageArchiveInfo(file.path, PackageManager.PackageInfoFlags.of(ARCHIVE_SIGNING_FLAGS.toLong()))
             } else {
                 @Suppress("DEPRECATION")
-                pm.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES)
+                pm.getPackageArchiveInfo(file.path, ARCHIVE_SIGNING_FLAGS)
             }
         } catch (_: RuntimeException) {
             null

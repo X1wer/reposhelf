@@ -46,7 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -77,14 +77,14 @@ import java.time.format.FormatStyle
 fun DiscoverScreen(onOpenApp: (String) -> Unit, viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory)) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { outcome ->
             val message = when (outcome) {
-                is RefreshOutcome.Updated -> context.getString(R.string.refresh_updated)
-                RefreshOutcome.Unchanged, RefreshOutcome.Skipped -> context.getString(R.string.refresh_unchanged)
-                is RefreshOutcome.Failed -> context.getString(R.string.refresh_failed, errorText(context, outcome.kind, outcome.detail))
+                is RefreshOutcome.Updated -> resources.getString(R.string.refresh_updated)
+                RefreshOutcome.Unchanged, RefreshOutcome.Skipped -> resources.getString(R.string.refresh_unchanged)
+                is RefreshOutcome.Failed -> resources.getString(R.string.refresh_failed, errorText(resources, outcome.kind, outcome.detail))
             }
             snackbarHostState.showSnackbar(message)
         }
@@ -100,14 +100,14 @@ fun DiscoverScreen(onOpenApp: (String) -> Unit, viewModel: DiscoverViewModel = v
     )
 }
 
-private fun errorText(context: android.content.Context, kind: CatalogErrorKind, detail: String?): String = when (kind) {
-    CatalogErrorKind.NETWORK -> context.getString(R.string.error_network)
-    CatalogErrorKind.HTTP -> context.getString(R.string.error_http, detail ?: "?")
-    CatalogErrorKind.RATE_LIMITED -> context.getString(R.string.error_rate_limited)
-    CatalogErrorKind.POLICY -> context.getString(R.string.error_policy)
-    CatalogErrorKind.INVALID -> context.getString(R.string.error_invalid)
-    CatalogErrorKind.REJECTED -> context.getString(R.string.error_rejected)
-    CatalogErrorKind.UNSUPPORTED_SCHEMA -> context.getString(R.string.error_unsupported)
+private fun errorText(resources: android.content.res.Resources, kind: CatalogErrorKind, detail: String?): String = when (kind) {
+    CatalogErrorKind.NETWORK -> resources.getString(R.string.error_network)
+    CatalogErrorKind.HTTP -> resources.getString(R.string.error_http, detail ?: "?")
+    CatalogErrorKind.RATE_LIMITED -> resources.getString(R.string.error_rate_limited)
+    CatalogErrorKind.POLICY -> resources.getString(R.string.error_policy)
+    CatalogErrorKind.INVALID -> resources.getString(R.string.error_invalid)
+    CatalogErrorKind.REJECTED -> resources.getString(R.string.error_rejected)
+    CatalogErrorKind.UNSUPPORTED_SCHEMA -> resources.getString(R.string.error_unsupported)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

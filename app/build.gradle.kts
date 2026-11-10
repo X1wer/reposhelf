@@ -54,6 +54,14 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    lint {
+        // A tiszta JVM-modulokat is az app minSdk-jával vizsgálja (NewApi: pl. Java 11+ API, ami API 28-on
+        // hiányzik; D-070). Az ilyen hibánál a lint megáll.
+        checkDependencies = true
+        abortOnError = true
+        error += "NewApi"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

@@ -67,19 +67,29 @@ class DiscoverViewModelTest {
     }
 
     @Test
-    fun bundledCatalogResults_appearAfterInitialization_evenWhenOffline() = runBlocking {
-        val loaded = withTimeout(15_000) { viewModel.uiState.first { !it.isInitializing && it.results.isNotEmpty() } }
+    fun bundledCatalogResults_appearAfterInitialization_evenWhenOffline(): Unit = runBlocking {
+        // A találati lista és a fejléc állapota (status) két külön feliratkozásból érkezik, így egy pillanatra
+        // lehet olyan állapot, ahol a lista már kész, a darabszám még nem. A beállt állapotot várjuk.
+        val loaded = withTimeout(15_000) {
+            viewModel.uiState.first { !it.isInitializing && it.results.isNotEmpty() && it.status.appCount > 0 }
+        }
         assertEquals(loaded.status.appCount, loaded.results.size, "szöveg nélkül a teljes katalógus látszik")
 
         viewModel.onQueryChange("pipe")
         val searched = withTimeout(15_000) { viewModel.uiState.first { it.query == "pipe" && it.results.size == 1 } }
         assertEquals("NewPipe", searched.results.single().name)
 
+        // A szűrő azonnal látszik az állapotban, a (késleltetett) keresés eredménye kicsit később: a végállapotot várjuk.
+        // Ha a szűrés hibás, a várakozás időtúllépéssel bukik.
+        val expectedSecurity = loaded.results.count { it.category == CatalogCategory.SECURITY }
+        assertTrue(expectedSecurity in 1 until loaded.results.size)
         viewModel.onQueryChange("")
         viewModel.onCategorySelected(CatalogCategory.SECURITY)
-        val filtered = withTimeout(15_000) {
-            viewModel.uiState.first { it.category == CatalogCategory.SECURITY && it.results.isNotEmpty() }
+        withTimeout(15_000) {
+            viewModel.uiState.first { state ->
+                state.category == CatalogCategory.SECURITY && state.results.size == expectedSecurity &&
+                    state.results.all { it.category == CatalogCategory.SECURITY }
+            }
         }
-        assertTrue(filtered.results.all { it.category == CatalogCategory.SECURITY })
     }
 }

@@ -4,6 +4,7 @@
 package io.github.x1wer.reposhelf
 
 import android.content.Context
+import android.util.Log
 import io.github.x1wer.reposhelf.core.apk.ApkVerifier
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogConfig
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogRepository
@@ -25,7 +26,10 @@ import io.github.x1wer.reposhelf.core.source.github.GitHubProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.time.Clock
 
 /**
@@ -81,22 +85,46 @@ class AppContainer(private val context: Context) {
         )
     }
 
-    /** Az APK-ba csomagolt kezdőkatalógus: első indításkor és offline is elérhető (D-025). */
+    /**
+     * Az APK-ba csomagolt kezdőkatalógus: első indításkor és offline is elérhető (D-025).
+     * Csak az I/O-hibát nyeli el; programhiba (pl. hiányzó API egy régebbi Androidon) ne váljon csendben
+     * „nincs katalógus” állapottá (D-070).
+     */
     private suspend fun readBundledCatalog(): ByteArray? = withContext(Dispatchers.IO) {
-        runCatching {
-            context.assets.open(BUNDLED_CATALOG_ASSET).use { input ->
-                val bytes = input.readNBytes(MAX_BUNDLED_BYTES + 1)
-                bytes.takeIf { it.size <= MAX_BUNDLED_BYTES }
-            }
-        }.getOrNull()
+        try {
+            context.assets.open(BUNDLED_CATALOG_ASSET).use { input -> input.readAtMost(MAX_BUNDLED_BYTES) }
+        } catch (e: IOException) {
+            Log.w(TAG, "A beépített katalógus nem olvasható", e)
+            null
+        }
     }
 
     companion object {
+        private const val TAG = "AppContainer"
         private const val MAX_PARALLEL_REQUESTS = 2
         private const val BUNDLED_CATALOG_ASSET = "catalog/catalog-v1.json"
         private const val MAX_BUNDLED_BYTES = 8 * 1024 * 1024
 
         /** A letölthető APK felső mérethatára (C. 21.). */
         const val MAX_APK_BYTES = 1024L * 1024 * 1024
+    }
+}
+
+/**
+ * Legfeljebb [limit] bájtot olvas be. Ha a forrás ennél hosszabb, `null`-t ad.
+ * Az `InputStream.readNBytes` Androidon csak API 33-tól létezik, ezért saját, API 28-on is működő ciklus.
+ */
+internal fun InputStream.readAtMost(limit: Int): ByteArray? {
+    require(limit >= 0)
+    val out = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0
+    while (true) {
+        // Legfeljebb egy bájttal olvasunk a korlát fölé: így derül ki, hogy a forrás hosszabb-e.
+        val read = read(buffer, 0, minOf(buffer.size, limit + 1 - total))
+        if (read < 0) return out.toByteArray()
+        total += read
+        if (total > limit) return null
+        out.write(buffer, 0, read)
     }
 }
