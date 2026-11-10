@@ -1,0 +1,54 @@
+# --- Gradle / build kimenetek ---
+.gradle/
+.kotlin/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# --- IDE ---
+*.iml
+.idea/*
+!.idea/codeStyles/
+.vscode/
+.fleet/
+
+# --- Helyi konfiguráció (soha ne kerüljön a repóba) ---
+local.properties
+keystore.properties
+signing.properties
+.env
+.env.*
+
+# --- Aláírókulcsok, titkok (soha ne kerüljenek a repóba) ---
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.der
+secrets/
+google-services.json
+
+# --- Build-termékek ---
+*.apk
+*.aab
+*.ap_
+*.idsig
+output-metadata.json
+
+# --- Kifejezetten tesztcélú, NEM titkos fixture-ök (pl. teszt-kulccsal aláírt APK-k).
+#     Valódi kulcsot ide sem szabad tenni. ---
+!**/src/test/resources/**
+!**/src/androidTest/assets/**
+!**/testdata/**
+
+# --- OS / ideiglenes ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*.swp
