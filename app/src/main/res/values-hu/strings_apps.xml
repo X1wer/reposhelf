@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <!-- Frissítési állapot (C. 10.) -->
+    <string name="upd_available">Frissítés érhető el</string>
+    <string name="upd_available_likely">Valószínűleg van frissítés (a letöltés után derül ki)</string>
+    <string name="upd_up_to_date">Naprakész</string>
+    <string name="upd_not_installed">Nincs telepítve – van telepíthető kiadás</string>
+    <string name="upd_version_unknown">A verzió nem hasonlítható össze (nem szabványos számozás); a letöltés után derül ki</string>
+    <string name="upd_no_installable">Nincs Android-csomagot tartalmazó kiadás</string>
+    <string name="upd_incompatible">A legújabb kiadás nem illik erre az eszközre</string>
+    <string name="upd_blocked">Az elérhető frissítés korábban nem ment át az ellenőrzésen, ezért nem ajánljuk fel újra</string>
+    <string name="upd_repo_not_found">A repó nem található</string>
+    <string name="upd_repo_unavailable">A repó nem érhető el</string>
+    <string name="upd_repo_id_changed">Ezen a néven most egy másik repó van – a frissítés tiltva</string>
+    <string name="upd_rate_limited">Elérte a GitHub API-korlátot</string>
+    <string name="upd_error">Az ellenőrzés nem sikerült</string>
+    <string name="upd_never_checked">Még nincs ellenőrizve</string>
+
+    <!-- Lista sorai -->
+    <string name="row_installed_version">Telepítve: %1$s</string>
+    <string name="row_not_installed">Nincs telepítve (vagy a RepoShelf nem látja)</string>
+    <string name="row_no_longer_installed">Már nincs telepítve</string>
+    <string name="row_latest">Legújabb: %1$s</string>
+    <string name="row_latest_prerelease">Legújabb: %1$s (előzetes kiadás)</string>
+    <string name="row_last_check">Utolsó ellenőrzés: %1$s</string>
+    <string name="row_last_error">Az utolsó ellenőrzés nem fejeződött be (%1$s)</string>
+    <string name="row_last_error_rate">Az utolsó ellenőrzés elmaradt: GitHub API-korlát (%1$s)</string>
+    <string name="row_auto_update_off">Automatikus frissítés: kikapcsolva</string>
+    <string name="row_monitoring_off">Frissítésfigyelés: kikapcsolva</string>
+    <string name="origin_catalog">Katalógus</string>
+    <string name="origin_user">Saját forrás</string>
+    <string name="badge_favorite">Kedvenc</string>
+
+    <!-- Műveletek -->
+    <string name="action_check_all">Összes ellenőrzése</string>
+    <string name="action_check_now">Ellenőrzés most</string>
+    <string name="action_update">Frissítés</string>
+    <string name="action_install">Telepítés</string>
+    <string name="action_open">Megnyitás</string>
+    <string name="action_uninstall_app">Alkalmazás eltávolítása</string>
+    <string name="action_monitoring_off">Frissítésfigyelés kikapcsolása</string>
+    <string name="action_monitoring_on">Frissítésfigyelés bekapcsolása</string>
+    <string name="action_remove_from_list">Eltávolítás a listából</string>
+    <string name="action_favorite">Kedvenc</string>
+    <string name="action_unfavorite">Eltávolítás a kedvencek közül</string>
+    <string name="action_follow">Követés</string>
+    <string name="action_following">Követve</string>
+    <string name="action_more">További műveletek</string>
+    <string name="action_remove">Eltávolítás</string>
+    <string name="remove_dialog_title">Eltávolítod a listából: %1$s?</string>
+    <string name="remove_dialog_text">Maga az alkalmazás telepítve marad az eszközön. A rögzített aláírója megmarad, így egy később más kulccsal aláírt frissítést továbbra is elutasítunk.</string>
+
+    <!-- Szűrők -->
+    <string name="filter_label">Szűrő</string>
+    <string name="filter_all">Mind</string>
+    <string name="filter_installed">Telepített</string>
+    <string name="filter_followed_only">Csak követett</string>
+    <string name="filter_favorites">Kedvencek</string>
+    <string name="filter_own">Saját források</string>
+    <string name="filter_no_longer">Már nem telepített</string>
+
+    <!-- Alkalmazásaim és Frissítések -->
+    <string name="my_apps_empty">Még nincs alkalmazás. Kövess egy alkalmazást az adatlapján (Felfedezés), vagy adj hozzá egy GitHub-repót a Saját források menüben.</string>
+    <string name="my_apps_filter_empty">Egy alkalmazás sem felel meg a szűrőnek.</string>
+    <string name="updates_empty">Nincs frissítés vagy probléma.</string>
+    <string name="updates_up_to_date_count">Naprakész vagy még nem ellenőrzött: %1$d</string>
+    <string name="updates_none_followed">Még nem követsz alkalmazást.</string>
+    <string name="check_running">Ellenőrzés: %1$d / %2$d…</string>
+    <string name="check_summary">Ellenőrizve: %1$d · frissítés: %2$d · hiba: %3$d</string>
+    <plurals name="check_summary_limited">
+        <item quantity="one">%1$d alkalmazás a GitHub API-korlát miatt kimaradt. Próbáld újra ekkor: %2$s.</item>
+        <item quantity="other">%1$d alkalmazás a GitHub API-korlát miatt kimaradt. Próbáld újra ekkor: %2$s.</item>
+    </plurals>
+    <plurals name="check_summary_limited_unknown">
+        <item quantity="one">%1$d alkalmazás a GitHub API-korlát miatt kimaradt. Próbáld újra később.</item>
+        <item quantity="other">%1$d alkalmazás a GitHub API-korlát miatt kimaradt. Próbáld újra később.</item>
+    </plurals>
+    <string name="check_note">Az ellenőrzések egymás után futnak, bejelentkezés nélkül használják a GitHub API-t (óránként 60 kérés, a hálózatodon lévő összes alkalmazással közösen).</string>
+    <string name="check_one_done">Ellenőrizve: %1$s</string>
+
+    <!-- Saját források (C. 9.) -->
+    <string name="sources_intro">Bármely nyilvános GitHub-repót hozzáadhatsz. A RepoShelf azonosítja, megnézi a kiadásait, és hogy van-e benne telepíthető Android-csomag. Te döntöd el, hogy telepíted-e az alkalmazást, vagy csak a kiadásait követed.</string>
+    <string name="sources_input_label">GitHub-URL vagy tulajdonos/név</string>
+    <string name="action_check_repo">Ellenőrzés</string>
+    <string name="sources_checking">A repó ellenőrzése…</string>
+    <string name="add_invalid_url">Nem ismerhető fel GitHub-repóként. Példa: https://github.com/tulajdonos/repo</string>
+    <string name="add_already">Ez a repó már szerepel a listádban.</string>
+    <string name="add_not_found">A repó nem található, vagy nem nyilvános.</string>
+    <string name="add_unavailable">A repó nem érhető el (például letiltották vagy eltávolították).</string>
+    <string name="add_rate_limited">Túl sok kérés (GitHub API-korlát). Próbáld újra ekkor: %1$s.</string>
+    <string name="add_rate_limited_unknown">Túl sok kérés (GitHub API-korlát). Próbáld újra később.</string>
+    <string name="add_failed">A GitHub nem érhető el (%1$s).</string>
+    <string name="step_identified">Repó azonosítva: %1$s</string>
+    <string name="step_available">Elérhető és nyilvános</string>
+    <string name="step_metadata">Alapadatok betöltve</string>
+    <string name="step_releases">Vannak kiadások, a legújabb: %1$s</string>
+    <string name="step_releases_none">Nincs kiadás</string>
+    <string name="step_installable">Telepíthető Android-csomag: %1$s</string>
+    <string name="step_installable_choice">Több Android-csomag – telepítéskor te választasz</string>
+    <string name="step_installable_none">Nincs telepíthető Android-csomag</string>
+    <string name="step_incompatible">Az Android-csomag nem illik erre az eszközre</string>
+    <string name="step_prerelease_only">Csak egy előzetes kiadásban van Android-csomag</string>
+    <string name="add_in_catalog">Ez az alkalmazás a központi katalógusban is szerepel; az ott rögzített adatokat (csomagnév, aláíró) használjuk.</string>
+    <string name="add_archived">A repó archivált (már nem karbantartott).</string>
+    <string name="action_follow_only">Kiadások követése</string>
+    <string name="action_follow_and_open">Követés és megnyitás</string>
+    <string name="sources_own_list">Általad hozzáadott</string>
+    <string name="sources_own_empty">Még nem adtál hozzá repót.</string>
+
+    <!-- Adatlap -->
+    <string name="details_app_not_found">Ez az alkalmazás már nincs a listádban és a katalógusban sem.</string>
+    <string name="details_following_not_installed">Követve, de nincs telepítve: az új kiadások a Frissítések között jelennek meg.</string>
+    <string name="repo_state_renamed">A repót átnevezték; a RepoShelf az új nevet követi.</string>
+    <string name="repo_state_owner_changed">A repó más tulajdonoshoz került. Frissítés előtt győződj meg róla, hogy ez várható volt.</string>
+    <string name="repo_state_id_changed">Ezen a néven most egy másik repó van (az eredetit törölték vagy átnevezték). A telepítés és a frissítés tiltva, amíg nem döntesz.</string>
+    <string name="repo_state_not_found">A repó már nem található. A telepített alkalmazást ez nem érinti.</string>
+    <string name="repo_state_unavailable">A repó nem érhető el (például letiltották).</string>
+    <string name="repo_state_accept_note">Csak akkor fogadd el, ha megbízol az új repóban. Az aláíró-ellenőrzés továbbra is érvényes: más kulccsal aláírt alkalmazást ezután sem telepítünk.</string>
+    <string name="action_accept_repo_identity">Az új repó elfogadása</string>
+
+    <!-- Új megállapítások -->
+    <string name="finding_repo_not_found">A követett repó már nem található.</string>
+    <string name="finding_repo_unavailable">A repó nem érhető el.</string>
+    <string name="finding_repo_id_changed">Ezen a néven most egy másik repó van (lehetséges repó-eltérítés).</string>
+    <string name="finding_repo_owner_changed">A repónak új tulajdonosa van.</string>
+    <string name="finding_repo_renamed">A repót átnevezték.</string>
+    <string name="finding_no_installable_release">Nincs telepíthető Android-csomagot tartalmazó kiadás.</string>
+    <string name="finding_installed_state_mismatch">A telepített csomag nem egyezik az ellenőrzöttel.</string>
+</resources>

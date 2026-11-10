@@ -3,24 +3,28 @@
 
 package io.github.x1wer.reposhelf.core.installer
 
+import io.github.x1wer.reposhelf.core.apk.ApkFacts
 import io.github.x1wer.reposhelf.core.apk.ApkVerifier
 import io.github.x1wer.reposhelf.core.apk.DownloadedApk
 import io.github.x1wer.reposhelf.core.apk.VerificationContext
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
 import io.github.x1wer.reposhelf.core.model.ReleaseAsset
 import io.github.x1wer.reposhelf.core.network.DownloadFailure
-import io.github.x1wer.reposhelf.core.network.DownloadRequest
-import io.github.x1wer.reposhelf.core.network.DownloadResult
-import io.github.x1wer.reposhelf.core.network.FileDownloader
 import io.github.x1wer.reposhelf.core.network.HttpPolicy
+import io.github.x1wer.reposhelf.core.update.ApkDownloader
+import io.github.x1wer.reposhelf.core.update.InstallExpectation
+import io.github.x1wer.reposhelf.core.update.InstallInitiator
+import io.github.x1wer.reposhelf.core.update.InstallOutcome
+import io.github.x1wer.reposhelf.core.update.InstallResultVerifier
+import io.github.x1wer.reposhelf.core.update.StepResult
+import io.github.x1wer.reposhelf.core.update.UpdateFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import java.io.File
 
 /** Mit várunk el a telepítendő alkalmazástól (a katalógusból vagy korábbi telepítésből). */
 data class InstallTarget(
     val expectedPackageName: String?,
+    /** A katalógusban rögzített aláírók; a korábbi telepítésből rögzítetteket a koordinátor maga kérdezi le. */
     val pinnedSignerCerts: List<String>,
     val minVersionCode: Long?,
     val fromCatalog: Boolean,
@@ -31,84 +35,82 @@ sealed interface PreparedInstall {
     data class Ready(val report: VerificationReport, val files: List<DownloadedApk>, val isUpdate: Boolean) : PreparedInstall
 
     /** Letöltve, de az ellenőrzés kritikus problémát talált: nem telepíthető (C. 20.). */
-    data class Blocked(val report: VerificationReport) : PreparedInstall
+    data class Blocked(val report: VerificationReport, val files: List<DownloadedApk>) : PreparedInstall
 
     data class DownloadFailed(val reason: DownloadFailure, val detail: String?, val resumable: Boolean) : PreparedInstall
 }
 
 /**
- * Az első telepítés útja (docs/ARCHITECTURE.md 9. pont, 4–7. lépés): letöltés → integritás → aláírás és
- * kompatibilitás → PackageInstaller. A letöltött fájlok az alkalmazás privát, backupból kizárt könyvtárában vannak.
+ * Az első telepítés ÉS a frissítés közös útja (docs/ARCHITECTURE.md 9. pont, 4–8. lépés): letöltés
+ * ([ApkDownloader]) → integritás és aláírás ([ApkVerifier.checkIntegrity], [ApkVerifier.checkSignature]) →
+ * a telepítés kezdeményezése ([InstallInitiator]) → az eredmény ellenőrzése ([InstallResultVerifier]).
  */
 class InstallCoordinator(
-    private val downloader: FileDownloader,
+    private val downloader: ApkDownloader,
     private val verifier: ApkVerifier,
     private val installed: InstalledPackages,
-    private val gateway: PackageInstallerGateway,
-    private val downloadsDir: File,
+    private val initiator: InstallInitiator,
+    /** Az első telepítéskor (vagy a már telepített példányról) rögzített aláírók csomagonként (C. 19.). */
+    private val storedPins: suspend (packageName: String) -> List<String>,
 ) {
+    /** 4–6. lépés. */
     suspend fun prepare(
         assets: List<ReleaseAsset>,
         policy: HttpPolicy,
         target: InstallTarget,
         onProgress: (downloaded: Long, total: Long) -> Unit,
     ): PreparedInstall {
-        require(assets.isNotEmpty())
-        val total = assets.sumOf { it.size }
-        var completedBytes = 0L
-        val files = mutableListOf<DownloadedApk>()
-        for (asset in assets) {
-            val url = asset.downloadUrl.toHttpUrlOrNull()
-                ?: return PreparedInstall.DownloadFailed(DownloadFailure.INVALID_REDIRECT, "URL", false)
-            val file = File(downloadsDir, "${asset.id}-${safeName(asset.name)}")
-            when (val result = downloader.download(DownloadRequest(url, policy, file, asset.size)) { done, _ -> onProgress(completedBytes + done, total) }) {
-                is DownloadResult.Failed -> {
-                    if (!result.resumable) files.forEach { it.file.delete() }
-                    return PreparedInstall.DownloadFailed(result.reason, result.detail, result.resumable)
-                }
-                is DownloadResult.Completed -> {
-                    completedBytes += result.size
-                    files += DownloadedApk(result.file, result.sha256, result.size, asset.size, asset.sha256)
-                }
+        val files = when (val download = downloader.download(assets, policy, onProgress)) {
+            is StepResult.Ok -> download.value
+            is StepResult.Failed -> {
+                val failure = download.failure as? UpdateFailure.Download
+                return PreparedInstall.DownloadFailed(failure?.reason ?: DownloadFailure.NETWORK, failure?.detail, failure?.resumable ?: false)
             }
+            is StepResult.Blocked -> return PreparedInstall.DownloadFailed(DownloadFailure.NETWORK, null, false)
         }
-        return withContext(Dispatchers.Default) { verify(files, target) }
+        return verify(files, target)
     }
 
-    private fun verify(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall {
+    private suspend fun verify(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall {
         val device = installed.deviceProfile()
-        fun context(packageName: String?) = VerificationContext(
+        val integrity = withContext(Dispatchers.IO) { verifier.checkIntegrity(files) }
+        suspend fun context(packageName: String?) = VerificationContext(
             expectedPackageName = target.expectedPackageName,
-            pinnedSignerCerts = target.pinnedSignerCerts,
+            pinnedSignerCerts = (target.pinnedSignerCerts + (packageName?.let { storedPins(it) }.orEmpty())).distinct(),
             minVersionCode = target.minVersionCode,
-            installed = packageName?.let(installed::get),
+            installed = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } },
             device = device,
         )
-        var report = verifier.verify(files, context(target.expectedPackageName))
-        // Ha a csomagnév csak az APK-ból derült ki, a telepített példánnyal (aláíró, verzió) is össze kell vetni.
+        var report = withContext(Dispatchers.IO) { verifier.checkSignature(files, integrity, context(target.expectedPackageName)) }
+        // Ha a csomagnév csak az APK-ból derült ki, a telepített példánnyal és a rögzített aláíróval is össze kell vetni.
         val actualPackage = report.facts?.packageName
         if (target.expectedPackageName == null && actualPackage != null) {
-            report = verifier.verify(files, context(actualPackage))
+            val context = context(actualPackage)
+            report = withContext(Dispatchers.IO) { verifier.checkSignature(files, integrity, context) }
         }
-        val isUpdate = report.facts?.packageName?.let(installed::get) != null
-        return if (report.isInstallable) PreparedInstall.Ready(report, files, isUpdate) else {
-            cleanup(files)
-            PreparedInstall.Blocked(report)
-        }
+        val isUpdate = report.facts?.packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } } != null
+        return if (report.isInstallable) PreparedInstall.Ready(report, files, isUpdate) else PreparedInstall.Blocked(report, files)
     }
 
-    suspend fun install(prepared: PreparedInstall.Ready, fromCatalog: Boolean): InstallStart {
-        val facts = checkNotNull(prepared.report.facts)
-        val perFile = prepared.report.fileFacts
-        // Az alap-APK kerül először a sessionbe, utána a splitek.
-        val ordered = prepared.files.mapIndexed { i, file -> VerifiedApk(file.file, file.sha256, perFile.getOrNull(i)?.splitName) }
-            .sortedBy { it.splitName != null }
-        return gateway.install(ordered, facts.packageName, fromCatalog = fromCatalog, isUpdate = prepared.isUpdate)
+    /** 7. lépés: a telepítés kezdeményezése, a telepítés PILLANATÁBAN érvényes állapottal újra összevetve. */
+    suspend fun install(prepared: PreparedInstall.Ready, target: InstallTarget): StepResult<Int> {
+        val packageName = prepared.report.facts?.packageName
+        val installedNow = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } }
+        return initiator.initiate(
+            report = prepared.report,
+            files = prepared.files,
+            expectation = InstallExpectation(target.expectedPackageName, target.fromCatalog),
+            installedNow = installedNow,
+            canRequestInstalls = installed.canRequestInstalls(),
+        )
     }
 
-    fun cleanup(files: List<DownloadedApk>) {
-        files.forEach { it.file.delete() }
+    /** 8. lépés: a rendszer eredményének ellenőrzése a ténylegesen telepített csomaggal. */
+    suspend fun verifyResult(event: InstallEvent, expected: ApkFacts): InstallOutcome? {
+        val signal = event.toSignal() ?: return null
+        val actual = withContext(Dispatchers.IO) { installed.get(expected.packageName) }
+        return InstallResultVerifier.verify(signal, expected, actual)
     }
 
-    private fun safeName(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
+    fun cleanup(files: List<DownloadedApk>) = downloader.discard(files)
 }

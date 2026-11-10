@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Alkalmazáskezelés, frissítésellenőrzés, saját források (4. munkamenet). -->
+<resources>
+    <!-- Frissítési állapot (C. 10.) -->
+    <string name="upd_available">Update available</string>
+    <string name="upd_available_likely">Update probably available (confirmed after download)</string>
+    <string name="upd_up_to_date">Up to date</string>
+    <string name="upd_not_installed">Not installed – an installable release is available</string>
+    <string name="upd_version_unknown">Version cannot be compared (non-standard numbering); it is confirmed after download</string>
+    <string name="upd_no_installable">No release with an Android package</string>
+    <string name="upd_incompatible">The latest release does not fit this device</string>
+    <string name="upd_blocked">The available update failed verification earlier and is not offered again</string>
+    <string name="upd_repo_not_found">Repository not found</string>
+    <string name="upd_repo_unavailable">Repository unavailable</string>
+    <string name="upd_repo_id_changed">A different repository now uses this name – updates are blocked</string>
+    <string name="upd_rate_limited">GitHub API limit reached</string>
+    <string name="upd_error">Check failed</string>
+    <string name="upd_never_checked">Not checked yet</string>
+
+    <!-- Lista sorai -->
+    <string name="row_installed_version">Installed: %1$s</string>
+    <string name="row_not_installed">Not installed (or not visible to RepoShelf)</string>
+    <string name="row_no_longer_installed">No longer installed</string>
+    <string name="row_latest">Latest: %1$s</string>
+    <string name="row_latest_prerelease">Latest: %1$s (pre-release)</string>
+    <string name="row_last_check">Last check: %1$s</string>
+    <string name="row_last_error">Last check did not complete (%1$s)</string>
+    <string name="row_last_error_rate">Last check skipped: GitHub API limit (%1$s)</string>
+    <string name="row_auto_update_off">Automatic update: off</string>
+    <string name="row_monitoring_off">Update monitoring: off</string>
+    <string name="origin_catalog">Catalog</string>
+    <string name="origin_user">Own source</string>
+    <string name="badge_favorite">Favorite</string>
+
+    <!-- Műveletek -->
+    <string name="action_check_all">Check all</string>
+    <string name="action_check_now">Check now</string>
+    <string name="action_update">Update</string>
+    <string name="action_install">Install</string>
+    <string name="action_open">Open</string>
+    <string name="action_uninstall_app">Uninstall app</string>
+    <string name="action_monitoring_off">Stop monitoring updates</string>
+    <string name="action_monitoring_on">Monitor updates</string>
+    <string name="action_remove_from_list">Remove from list</string>
+    <string name="action_favorite">Favorite</string>
+    <string name="action_unfavorite">Remove from favorites</string>
+    <string name="action_follow">Follow</string>
+    <string name="action_following">Following</string>
+    <string name="action_more">More actions</string>
+    <string name="action_remove">Remove</string>
+    <string name="remove_dialog_title">Remove %1$s from the list?</string>
+    <string name="remove_dialog_text">The app itself stays installed on the device. Its recorded signer is kept, so a later update signed with a different key will still be refused.</string>
+
+    <!-- Szűrők -->
+    <string name="filter_label">Filter</string>
+    <string name="filter_all">All</string>
+    <string name="filter_installed">Installed</string>
+    <string name="filter_followed_only">Followed only</string>
+    <string name="filter_favorites">Favorites</string>
+    <string name="filter_own">Own sources</string>
+    <string name="filter_no_longer">No longer installed</string>
+
+    <!-- Alkalmazásaim és Frissítések -->
+    <string name="my_apps_empty">No apps yet. Follow an app on its page in Discover, or add a GitHub repository under My sources.</string>
+    <string name="my_apps_filter_empty">No apps match this filter.</string>
+    <string name="updates_empty">No updates or problems found.</string>
+    <string name="updates_up_to_date_count">Up to date or not checked: %1$d</string>
+    <string name="updates_none_followed">You are not following any apps yet.</string>
+    <string name="check_running">Checking %1$d / %2$d…</string>
+    <string name="check_summary">Checked: %1$d · updates: %2$d · failed: %3$d</string>
+    <plurals name="check_summary_limited">
+        <item quantity="one">%1$d app was not checked because of the GitHub API limit. Try again after %2$s.</item>
+        <item quantity="other">%1$d apps were not checked because of the GitHub API limit. Try again after %2$s.</item>
+    </plurals>
+    <plurals name="check_summary_limited_unknown">
+        <item quantity="one">%1$d app was not checked because of the GitHub API limit. Try again later.</item>
+        <item quantity="other">%1$d apps were not checked because of the GitHub API limit. Try again later.</item>
+    </plurals>
+    <string name="check_note">Checks run one after another and use the GitHub API without signing in (60 requests per hour, shared by all apps on your network).</string>
+    <string name="check_one_done">Checked: %1$s</string>
+
+    <!-- Saját források (C. 9.) -->
+    <string name="sources_intro">Add any public GitHub repository. RepoShelf identifies it, checks its releases and whether it contains an installable Android package. You decide whether to install the app or only follow its releases.</string>
+    <string name="sources_input_label">GitHub URL or owner/name</string>
+    <string name="action_check_repo">Check</string>
+    <string name="sources_checking">Checking the repository…</string>
+    <string name="add_invalid_url">Not recognized as a GitHub repository. Example: https://github.com/owner/repo</string>
+    <string name="add_already">This repository is already on your list.</string>
+    <string name="add_not_found">Repository not found, or it is not public.</string>
+    <string name="add_unavailable">The repository is not available (for example, blocked or removed).</string>
+    <string name="add_rate_limited">Too many requests (GitHub API limit). Try again after %1$s.</string>
+    <string name="add_rate_limited_unknown">Too many requests (GitHub API limit). Try again later.</string>
+    <string name="add_failed">Could not reach GitHub (%1$s).</string>
+    <string name="step_identified">Repository identified: %1$s</string>
+    <string name="step_available">Available and public</string>
+    <string name="step_metadata">Basic information loaded</string>
+    <string name="step_releases">Releases found, latest: %1$s</string>
+    <string name="step_releases_none">No releases found</string>
+    <string name="step_installable">Installable Android package: %1$s</string>
+    <string name="step_installable_choice">Several Android packages – you choose when installing</string>
+    <string name="step_installable_none">No installable Android package</string>
+    <string name="step_incompatible">The Android package does not fit this device</string>
+    <string name="step_prerelease_only">Only a pre-release contains an Android package</string>
+    <string name="add_in_catalog">This app is also in the central catalog; its recorded data (package name, signer) is used.</string>
+    <string name="add_archived">The repository is archived (no longer maintained).</string>
+    <string name="action_follow_only">Follow releases</string>
+    <string name="action_follow_and_open">Follow and open</string>
+    <string name="sources_own_list">Added by you</string>
+    <string name="sources_own_empty">You have not added any repositories yet.</string>
+
+    <!-- Adatlap -->
+    <string name="details_app_not_found">This app is no longer on your list or in the catalog.</string>
+    <string name="details_following_not_installed">Followed but not installed: new releases appear under Updates.</string>
+    <string name="repo_state_renamed">The repository was renamed; RepoShelf follows the new name.</string>
+    <string name="repo_state_owner_changed">The repository now belongs to a different owner. Make sure this is expected before updating.</string>
+    <string name="repo_state_id_changed">A different repository now exists under this name (the original was deleted or renamed). Installing and updating are blocked until you decide.</string>
+    <string name="repo_state_not_found">The repository can no longer be found. The installed app is not affected.</string>
+    <string name="repo_state_unavailable">The repository is unavailable (for example, blocked).</string>
+    <string name="repo_state_accept_note">Accept only if you trust the new repository. The signer check stays in force: an app signed with a different key will still not be installed.</string>
+    <string name="action_accept_repo_identity">Accept new repository</string>
+
+    <!-- Új megállapítások -->
+    <string name="finding_repo_not_found">The followed repository can no longer be found.</string>
+    <string name="finding_repo_unavailable">The repository is unavailable.</string>
+    <string name="finding_repo_id_changed">A different repository now uses this name (possible repository hijacking).</string>
+    <string name="finding_repo_owner_changed">The repository has a new owner.</string>
+    <string name="finding_repo_renamed">The repository was renamed.</string>
+    <string name="finding_no_installable_release">There is no release with an installable Android package.</string>
+    <string name="finding_installed_state_mismatch">The installed package does not match the verified one.</string>
+</resources>

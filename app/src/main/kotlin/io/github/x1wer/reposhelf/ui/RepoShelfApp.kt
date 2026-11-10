@@ -32,7 +32,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.x1wer.reposhelf.R
 import io.github.x1wer.reposhelf.ui.common.PlaceholderScreen
+import io.github.x1wer.reposhelf.core.data.tracked.TrackedApp
+import io.github.x1wer.reposhelf.ui.apps.MyAppsScreen
+import io.github.x1wer.reposhelf.ui.apps.UpdatesScreen
+import io.github.x1wer.reposhelf.ui.details.DetailsKey
 import io.github.x1wer.reposhelf.ui.details.DetailsScreen
+import io.github.x1wer.reposhelf.ui.sources.SourcesScreen
 import io.github.x1wer.reposhelf.ui.discover.DiscoverScreen
 
 /** A főmenü (C. 22.1.): Felfedezés, Alkalmazásaim, Frissítések, Saját források, Beállítások. */
@@ -46,6 +51,7 @@ enum class TopLevelDestination(val route: String, @StringRes val labelRes: Int, 
 
 private const val DETAILS_ROUTE = "app"
 private const val DETAILS_ARG = "id"
+private const val TRACKED_ROUTE = "tracked"
 private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
 
 @Composable
@@ -81,6 +87,11 @@ fun RepoShelfApp() {
             startDestination = TopLevelDestination.DISCOVER.route,
             modifier = Modifier.padding(innerPadding),
         ) {
+            val openTracked: (TrackedApp) -> Unit = { app ->
+                // Katalógusbeli appnál a katalógus-adatlap (a követés ott is látszik), saját hozzáadásúnál a követett sor.
+                val route = app.catalogId?.let { "$DETAILS_ROUTE/${Uri.encode(it)}" } ?: "$TRACKED_ROUTE/${app.id}"
+                navController.navigate(route)
+            }
             composable(TopLevelDestination.DISCOVER.route) {
                 DiscoverScreen(onOpenApp = { id -> navController.navigate("$DETAILS_ROUTE/${Uri.encode(id)}") })
             }
@@ -90,16 +101,23 @@ fun RepoShelfApp() {
             ) { entry ->
                 // Az argumentum a saját belső útvonalunkból jön, de validáljuk (nincs exportált deep link).
                 val id = entry.arguments?.getString(DETAILS_ARG).orEmpty()
-                if (CATALOG_ID.matches(id)) DetailsScreen(catalogId = id, onBack = { navController.popBackStack() })
+                if (CATALOG_ID.matches(id)) DetailsScreen(key = DetailsKey.Catalog(id), onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = "$TRACKED_ROUTE/{$DETAILS_ARG}",
+                arguments = listOf(navArgument(DETAILS_ARG) { type = NavType.LongType }),
+            ) { entry ->
+                val id = entry.arguments?.getLong(DETAILS_ARG) ?: 0L
+                if (id > 0) DetailsScreen(key = DetailsKey.Tracked(id), onBack = { navController.popBackStack() })
             }
             composable(TopLevelDestination.MY_APPS.route) {
-                PlaceholderScreen(R.string.nav_my_apps, R.string.placeholder_my_apps)
+                MyAppsScreen(onOpenApp = openTracked)
             }
             composable(TopLevelDestination.UPDATES.route) {
-                PlaceholderScreen(R.string.nav_updates, R.string.placeholder_updates)
+                UpdatesScreen(onOpenApp = openTracked)
             }
             composable(TopLevelDestination.SOURCES.route) {
-                PlaceholderScreen(R.string.nav_sources, R.string.placeholder_sources)
+                SourcesScreen(onOpenTracked = { id -> navController.navigate("$TRACKED_ROUTE/$id") })
             }
             composable(TopLevelDestination.SETTINGS.route) {
                 PlaceholderScreen(R.string.nav_settings, R.string.placeholder_settings)

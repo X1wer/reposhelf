@@ -8,13 +8,17 @@
     származó alkalmazások telepítése” engedélyt külön meg kell adnia (Android 8+, alkalmazásonként).
   - ENFORCE_UPDATE_OWNERSHIP (normál, Android 14+): első telepítéskor kérhetjük, hogy más telepítő csak a
     felhasználó jóváhagyásával frissíthesse az appot (D-043).
-  Package visibility: a MAIN/LAUNCHER query QUERY_ALL_PACKAGES nélkül teszi láthatóvá az indítható appokat, így
-  kiolvasható a telepített verzió és az aláíró (D-040). A telepítő NEM látja automatikusan a saját telepítéseit.
+  - REQUEST_DELETE_PACKAGES (normál): az „Alkalmazásaim” képernyőről kezdeményezett eltávolítás (C. 10.). Csak a
+    rendszer megerősítő ablakát nyitja meg; a felhasználó dönt, a háttérben semmi nem törlődik.
+  Package visibility (végleges döntés, D-040): a MAIN/LAUNCHER query QUERY_ALL_PACKAGES nélkül teszi láthatóvá az
+  indítható appokat, így kiolvasható a telepített verzió és az aláíró. A telepítő NEM látja automatikusan a saját
+  telepítéseit. Az indítóikon nélküli csomagok nem láthatók: a felület ezt jelzi („nem telepített vagy nem látható”).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
 
     <queries>
         <intent>

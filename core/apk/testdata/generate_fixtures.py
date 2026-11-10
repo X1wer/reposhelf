@@ -26,7 +26,7 @@ PLATFORM = "android-37.0"
 PASSWORD = "test-only-not-secret"
 
 HERE = pathlib.Path(__file__).resolve().parent
-OUT = HERE.parent / "src" / "test" / "resources" / "fixtures"
+OUT = HERE.parent / "src" / "testFixtures" / "resources" / "fixtures"
 SDK = pathlib.Path(os.environ.get("ANDROID_SDK", pathlib.Path(os.environ["LOCALAPPDATA"]) / "Android" / "Sdk"))
 JAVA_HOME = pathlib.Path(os.environ.get("JAVA_HOME", r"C:\Program Files\Android\Android Studio\jbr"))
 TOOLS = SDK / "build-tools" / BUILD_TOOLS

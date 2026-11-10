@@ -35,6 +35,7 @@ dependencies {
     api(project(":core:catalog"))
     api(project(":core:network"))
     api(project(":core:source"))
+    api(project(":core:update"))
     // Az AppDatabase (RoomDatabase leszármazott) a modul publikus API-jának része, ezért `api`.
     api(libs.androidx.room.runtime)
     ksp(libs.androidx.room.compiler)
@@ -46,4 +47,5 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(testFixtures(project(":core:network")))
+    testImplementation(testFixtures(project(":core:apk")))
 }

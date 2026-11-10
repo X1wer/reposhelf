@@ -67,6 +67,27 @@ enum class FindingKind {
 
     /** Előzetes (prerelease) kiadás. */
     PRERELEASE,
+
+    /** A követett repó nem található (törölték, priváttá tették vagy átnevezték átirányítás nélkül). */
+    REPO_NOT_FOUND,
+
+    /** A repó jogi vagy szabályzati okból nem érhető el (451, letiltva). */
+    REPO_UNAVAILABLE,
+
+    /** Azonos néven MÁS repó (eltérő stabil azonosító): lehetséges repó-eltérítés (C. 19.). */
+    REPO_ID_CHANGED,
+
+    /** A repó más tulajdonoshoz került (azonos stabil azonosító, eltérő tulajdonos; C. 19.). */
+    REPO_OWNER_CHANGED,
+
+    /** A repót átnevezték (azonos azonosító és tulajdonos, tájékoztató). */
+    REPO_RENAMED,
+
+    /** Nincs telepíthető Android-csomagot tartalmazó kiadás. */
+    NO_INSTALLABLE_RELEASE,
+
+    /** A telepítés után a készüléken lévő csomag nem az, amit telepítettünk (verziókód vagy aláíró eltér). */
+    INSTALLED_STATE_MISMATCH,
 }
 
 data class Finding(val kind: FindingKind, val severity: Severity, val detail: String? = null)

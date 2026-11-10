@@ -18,17 +18,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import java.io.File
+import io.github.x1wer.reposhelf.core.update.InstallFailureKind
+import io.github.x1wer.reposhelf.core.update.InstallRequest
+import io.github.x1wer.reposhelf.core.update.InstallSignal
+import io.github.x1wer.reposhelf.core.update.InstallStart
+import io.github.x1wer.reposhelf.core.update.PackageInstallPort
 import java.io.IOException
 import java.security.MessageDigest
-
-/** Egy már ellenőrzött állomány, amely a sessionbe kerül. */
-data class VerifiedApk(val file: File, val sha256: String, val splitName: String?)
-
-sealed interface InstallStart {
-    data class Committed(val sessionId: Int) : InstallStart
-    data class Failed(val reason: String) : InstallStart
-}
 
 /** A PackageInstaller által küldött eredmény (docs/ARCHITECTURE.md 11.1.). */
 sealed interface InstallEvent {
@@ -48,6 +44,25 @@ sealed interface InstallEvent {
         /** Ha van: további magyarázó felület a rendszertől (pl. developer verification). */
         val explanationIntent: Intent?,
     ) : InstallEvent
+}
+
+/** A rendszer eredményének platformfüggetlen alakja a 8. lépéshez (docs/ARCHITECTURE.md 11.1., hibakód-leképezés). */
+fun InstallEvent.toSignal(): InstallSignal? = when (this) {
+    is InstallEvent.Success -> InstallSignal.Success(packageName)
+    is InstallEvent.PendingUserAction -> null
+    is InstallEvent.Failure -> InstallSignal.Failure(
+        when (status) {
+            PackageInstaller.STATUS_FAILURE_CONFLICT -> InstallFailureKind.CONFLICT
+            PackageInstaller.STATUS_FAILURE_INVALID -> InstallFailureKind.INVALID
+            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> InstallFailureKind.INCOMPATIBLE
+            PackageInstaller.STATUS_FAILURE_BLOCKED -> InstallFailureKind.BLOCKED
+            PackageInstaller.STATUS_FAILURE_STORAGE -> InstallFailureKind.STORAGE
+            PackageInstaller.STATUS_FAILURE_ABORTED ->
+                if (developerVerificationReason != null) InstallFailureKind.DEVELOPER_VERIFICATION else InstallFailureKind.ABORTED
+            else -> InstallFailureKind.OTHER
+        },
+        message,
+    )
 }
 
 /** A telepítési események folyamaton belüli csatornája (a receiver ide küld, a felület innen olvas). */
@@ -81,15 +96,17 @@ object InstallEvents {
  * - a sessionbe írt bájtok SHA-256-ja commit előtt újra ellenőrzött (nincs rés az ellenőrzés és a telepítés között);
  * - a státusz egy nem exportált receiverre érkezik, explicit és mutábilis PendingIntent-tel (target 35+ követelmény).
  */
-class PackageInstallerGateway(private val context: Context) {
+class PackageInstallerGateway(
+    private val context: Context,
+    /** Update ownership kérése első telepítéskor (D-043; alapból be, a beállításokban kikapcsolható lesz). */
+    private val requestUpdateOwnership: () -> Boolean = { true },
+) : PackageInstallPort {
 
-    suspend fun install(
-        files: List<VerifiedApk>,
-        packageName: String,
-        fromCatalog: Boolean,
-        isUpdate: Boolean,
-        requestUpdateOwnership: Boolean = true,
-    ): InstallStart = withContext(Dispatchers.IO) {
+    override suspend fun install(request: InstallRequest): InstallStart = withContext(Dispatchers.IO) {
+        val files = request.files
+        val packageName = request.packageName
+        val fromCatalog = request.fromCatalog
+        val isUpdate = request.isUpdate
         require(files.isNotEmpty())
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
@@ -103,7 +120,7 @@ class PackageInstallerGateway(private val context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 setPackageSource(if (fromCatalog) PackageInstaller.PACKAGE_SOURCE_STORE else PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && requestUpdateOwnership && !isUpdate) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && requestUpdateOwnership() && !isUpdate) {
                 setRequestUpdateOwnership(true)
             }
         }

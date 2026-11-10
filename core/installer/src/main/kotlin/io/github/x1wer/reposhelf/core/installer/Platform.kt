@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.Signature
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.StatFs
@@ -18,6 +19,7 @@ import io.github.x1wer.reposhelf.core.apk.ApkInspector
 import io.github.x1wer.reposhelf.core.apk.DeviceProfile
 import io.github.x1wer.reposhelf.core.apk.InstalledAppInfo
 import io.github.x1wer.reposhelf.core.apk.SignerInfo
+import io.github.x1wer.reposhelf.core.update.InstalledAppLookup
 import java.io.File
 import java.security.MessageDigest
 
@@ -87,8 +89,8 @@ class PlatformApkInspector(private val context: Context) : ApkInspector {
 }
 
 /** A készüléken telepített csomagok lekérdezése (csak a láthatók; docs/ARCHITECTURE.md 13.). */
-class InstalledPackages(private val context: Context) {
-    fun get(packageName: String): InstalledAppInfo? = try {
+class InstalledPackages(private val context: Context) : InstalledAppLookup {
+    override fun get(packageName: String): InstalledAppInfo? = try {
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()))
         } else {
@@ -100,6 +102,19 @@ class InstalledPackages(private val context: Context) {
     }
 
     fun launchIntent(packageName: String): Intent? = context.packageManager.getLaunchIntentForPackage(packageName)
+
+    /** A telepített alkalmazás ikonja (csak látható csomagnál; ARCH 13.). */
+    fun icon(packageName: String): Drawable? = try {
+        context.packageManager.getApplicationIcon(packageName)
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+
+    /**
+     * Az eltávolítás kezdeményezése: a rendszer saját megerősítő ablaka jelenik meg (C. 10.). A felhasználó dönt;
+     * a mi oldalunkon semmi nem törlődik automatikusan. Jogosultság: `REQUEST_DELETE_PACKAGES` (normál, API 28+).
+     */
+    fun uninstallIntent(packageName: String): Intent = Intent(Intent.ACTION_DELETE, Uri.fromParts("package", packageName, null))
 
     fun appInfoIntent(packageName: String): Intent =
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))

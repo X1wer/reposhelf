@@ -10,10 +10,13 @@ import io.github.x1wer.reposhelf.core.data.catalog.CatalogConfig
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogRepository
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
 import io.github.x1wer.reposhelf.core.data.details.AppDetailsRepository
+import io.github.x1wer.reposhelf.core.data.tracked.RequestBudget
+import io.github.x1wer.reposhelf.core.data.tracked.TrackedAppsRepository
 import io.github.x1wer.reposhelf.core.installer.InstallCoordinator
 import io.github.x1wer.reposhelf.core.installer.InstalledPackages
 import io.github.x1wer.reposhelf.core.installer.PackageInstallerGateway
 import io.github.x1wer.reposhelf.core.installer.PlatformApkInspector
+import io.github.x1wer.reposhelf.core.model.ProviderId
 import io.github.x1wer.reposhelf.core.network.ConcurrencyLimiter
 import io.github.x1wer.reposhelf.core.network.FileDownloader
 import io.github.x1wer.reposhelf.core.network.HttpClients
@@ -23,6 +26,8 @@ import io.github.x1wer.reposhelf.core.network.ImageHttpClient
 import io.github.x1wer.reposhelf.core.network.RateLimitTracker
 import io.github.x1wer.reposhelf.core.source.ProviderRegistry
 import io.github.x1wer.reposhelf.core.source.github.GitHubProvider
+import io.github.x1wer.reposhelf.core.update.ApkDownloader
+import io.github.x1wer.reposhelf.core.update.InstallInitiator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -31,6 +36,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.time.Clock
+import java.time.Instant
 
 /**
  * Kézi függőséginjektálás (D-011): az egész alkalmazás egyetlen példányban létrehozott szolgáltatásai.
@@ -74,14 +80,37 @@ class AppContainer(private val context: Context) {
 
     val installedPackages by lazy { InstalledPackages(context) }
 
+    /**
+     * API-keret a háttérben futó (nem interaktív) ellenőrzésekhez: mindig marad legalább [UI_RESERVE_REQUESTS] kérés a
+     * felületnek (D-051).
+     */
+    private val requestBudget = object : RequestBudget {
+        override fun canSpend(provider: ProviderId, requests: Int): Boolean =
+            rateLimits.hasBudget(rateLimitScope(provider), reserve = UI_RESERVE_REQUESTS + requests - 1)
+
+        override fun resumesAt(provider: ProviderId): Instant? {
+            val scope = rateLimitScope(provider)
+            return rateLimits.blockedUntil(scope) ?: rateLimits.snapshot(scope)?.resetAt
+        }
+    }
+
+    private fun rateLimitScope(provider: ProviderId): String = when (provider) {
+        ProviderId.GITHUB -> GitHubProvider.RATE_LIMIT_SCOPE
+    }
+
+    /** Követett, kedvenc és saját hozzáadású alkalmazások, frissítésellenőrzés (C. 9–12.1., 19.). */
+    val trackedApps by lazy {
+        TrackedAppsRepository(database, sourceProviders, installedPackages, installedPackages::deviceProfile, requestBudget, clock)
+    }
+
     val installCoordinator by lazy {
         InstallCoordinator(
-            downloader = FileDownloader(httpClient),
+            // Privát, backupból kizárt könyvtár (docs/ARCHITECTURE.md 9. pont, 4. lépés).
+            downloader = ApkDownloader(FileDownloader(httpClient), File(context.noBackupFilesDir, "downloads")),
             verifier = ApkVerifier(PlatformApkInspector(context)),
             installed = installedPackages,
-            gateway = PackageInstallerGateway(context),
-            // Privát, backupból kizárt könyvtár (docs/ARCHITECTURE.md 9. pont, 4. lépés).
-            downloadsDir = File(context.noBackupFilesDir, "downloads"),
+            initiator = InstallInitiator(PackageInstallerGateway(context)),
+            storedPins = trackedApps::pinnedSigners,
         )
     }
 
@@ -102,6 +131,9 @@ class AppContainer(private val context: Context) {
     companion object {
         private const val TAG = "AppContainer"
         private const val MAX_PARALLEL_REQUESTS = 2
+
+        /** Ennyi API-kérés mindig megmarad a felhasználói felületnek (adatlap, hozzáadás; D-051). */
+        private const val UI_RESERVE_REQUESTS = 15
         private const val BUNDLED_CATALOG_ASSET = "catalog/catalog-v1.json"
         private const val MAX_BUNDLED_BYTES = 8 * 1024 * 1024
 

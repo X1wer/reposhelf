@@ -32,7 +32,7 @@ class ApkVerifierTest {
     private val x86Device = DeviceProfile(sdkInt = 37, supportedAbis = listOf("x86_64", "arm64-v8a"), freeBytes = null)
     private val armDevice = DeviceProfile(sdkInt = 37, supportedAbis = listOf("arm64-v8a", "armeabi-v7a", "armeabi"), freeBytes = null)
 
-    private fun fixture(name: String): File = File(checkNotNull(javaClass.getResource("/fixtures/$name")) { name }.toURI())
+    private fun fixture(name: String): File = ApkFixtures.file(name)
 
     private fun sha256(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
 

@@ -21,10 +21,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -69,6 +72,7 @@ import io.github.x1wer.reposhelf.core.apk.PreliminaryCheck
 import io.github.x1wer.reposhelf.core.apk.SignerIdentity
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
 import io.github.x1wer.reposhelf.core.data.details.DetailsError
+import io.github.x1wer.reposhelf.core.data.tracked.RepoState
 import io.github.x1wer.reposhelf.core.installer.Shortcuts
 import io.github.x1wer.reposhelf.core.model.FindingKind
 import io.github.x1wer.reposhelf.core.model.Severity
@@ -80,12 +84,12 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 @Composable
-fun DetailsScreen(catalogId: String, onBack: () -> Unit) {
+fun DetailsScreen(key: DetailsKey, onBack: () -> Unit) {
     val app = LocalContext.current.applicationContext as RepoShelfApplication
-    val viewModel: DetailsViewModel = viewModel(key = "details-$catalogId", factory = viewModelFactory { initializer { DetailsViewModel(catalogId, app.container) } })
+    val viewModel: DetailsViewModel = viewModel(key = "details-$key", factory = viewModelFactory { initializer { DetailsViewModel(key, app.container) } })
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // Visszatérés a rendszer beállítóképernyőjéről („ismeretlen források”): az engedély újraellenőrzése.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onPermissionScreenReturned() }
+    // Előtérbe kerüléskor: a telepített verzió újraolvasása, és a beállítóképernyőről jövet az engedély újraellenőrzése.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResume() }
     DetailsContent(state, viewModel, onBack)
 }
 
@@ -96,7 +100,7 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.app?.name.orEmpty()) },
+                title = { Text(state.subject?.name.orEmpty()) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) }
                 },
@@ -112,9 +116,12 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
     ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Header(state) }
+            if (state.notFound) item { Text(stringResource(R.string.details_app_not_found), color = MaterialTheme.colorScheme.error) }
             if (state.loading) item { Column { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(stringResource(R.string.details_loading)) } }
             item { Errors(state, onRetry = { vm.load(force = true) }) }
             item { Info(state) }
+            item { TrackingRow(state, vm) }
+            item { RepoStateNotice(state, vm) }
             item { ReleaseInfo(state, vm) }
             item { InstallSection(state, vm) }
             state.releaseNotes?.let { notes ->
@@ -145,7 +152,7 @@ private fun SectionTitle(text: String) {
 
 @Composable
 private fun Header(state: DetailsUiState) {
-    val app = state.app ?: return
+    val app = state.subject ?: return
     val iconDescription = stringResource(R.string.details_icon_missing)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // Helyettesítő ikon (C. 6.2.): a GitHub-repónak nincs szabványos alkalmazásikonja.
@@ -158,7 +165,8 @@ private fun Header(state: DetailsUiState) {
         Column {
             Text(app.name, style = MaterialTheme.typography.headlineSmall)
             Text(stringResource(R.string.details_developer, app.repo.owner), style = MaterialTheme.typography.bodyMedium)
-            Text(stringResource(app.category.labelRes()), style = MaterialTheme.typography.labelMedium)
+            app.category?.let { Text(stringResource(it.labelRes()), style = MaterialTheme.typography.labelMedium) }
+                ?: Text(stringResource(R.string.origin_user), style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -187,7 +195,7 @@ private fun errorText(error: DetailsError): String = when (error) {
 
 @Composable
 private fun Info(state: DetailsUiState) {
-    val app = state.app ?: return
+    val app = state.subject ?: return
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(state.repo?.description ?: stringResource(R.string.details_description_missing), style = MaterialTheme.typography.bodyLarge)
         Text(stringResource(R.string.details_repository, app.repo.path), style = MaterialTheme.typography.bodySmall)
@@ -196,6 +204,57 @@ private fun Info(state: DetailsUiState) {
             style = MaterialTheme.typography.bodySmall,
         )
         if (state.repo?.isArchived == true) Text(stringResource(R.string.details_archived), color = MaterialTheme.colorScheme.error)
+    }
+}
+
+/** Követés és kedvenc (C. 9–10.): a felhasználó dönt, hogy telepít-e, vagy csak a kiadásokat követi. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrackingRow(state: DetailsUiState, vm: DetailsViewModel) {
+    val subject = state.subject ?: return
+    val tracked = state.tracked
+    // Saját hozzáadású appnál a sor mindig létezik; katalógusbelinél a követés hozza létre.
+    if (tracked == null && subject.catalogApp == null) return
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        FilterChip(
+            selected = tracked?.isFollowed == true,
+            onClick = vm::toggleFollow,
+            label = { Text(stringResource(if (tracked?.isFollowed == true) R.string.action_following else R.string.action_follow)) },
+        )
+        FilterChip(
+            selected = tracked?.isFavorite == true,
+            onClick = vm::toggleFavorite,
+            label = { Text(stringResource(R.string.action_favorite)) },
+            leadingIcon = { Icon(if (tracked?.isFavorite == true) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, contentDescription = null) },
+        )
+    }
+    if (tracked?.isFollowed == true && state.installed == null) {
+        Text(stringResource(R.string.details_following_not_installed), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** A repó azonosságának változása (C. 19.): átnevezés (info), tulajdonosváltás (figyelmeztetés), más repó (kritikus). */
+@Composable
+private fun RepoStateNotice(state: DetailsUiState, vm: DetailsViewModel) {
+    val tracked = state.tracked ?: return
+    val (textRes, critical) = when (tracked.repoState) {
+        RepoState.OK -> return
+        RepoState.RENAMED -> R.string.repo_state_renamed to false
+        RepoState.OWNER_CHANGED -> R.string.repo_state_owner_changed to false
+        RepoState.ID_CHANGED -> R.string.repo_state_id_changed to true
+        RepoState.NOT_FOUND -> R.string.repo_state_not_found to false
+        RepoState.UNAVAILABLE -> R.string.repo_state_unavailable to false
+    }
+    val colors = if (critical) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer) else CardDefaults.cardColors()
+    Card(colors = colors, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(textRes), style = MaterialTheme.typography.bodyMedium)
+            tracked.repoStateDetail?.let { Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
+            if (tracked.repoState == RepoState.ID_CHANGED || tracked.repoState == RepoState.OWNER_CHANGED) {
+                Text(stringResource(R.string.repo_state_accept_note), style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = vm::acceptRepositoryIdentity) { Text(stringResource(R.string.action_accept_repo_identity)) }
+            }
+        }
     }
 }
 
@@ -248,7 +307,7 @@ private fun InstallSection(state: DetailsUiState, vm: DetailsViewModel) {
             SectionTitle(stringResource(R.string.install_section))
             when (val install = state.install) {
                 InstallUiState.Idle, is InstallUiState.ChoosingAsset, is InstallUiState.NeedsPermission -> {
-                    Button(onClick = vm::onInstallClicked, enabled = state.selection !is AssetSelection.NoInstallable && state.selection != null) {
+                    Button(onClick = vm::onInstallClicked, enabled = state.selection !is AssetSelection.NoInstallable && state.selection != null && !state.installBlockedByRepo) {
                         Text(stringResource(if (state.installed != null) R.string.action_download_update else R.string.action_download_and_check))
                     }
                     Preliminary(state.preliminary)
@@ -262,12 +321,12 @@ private fun InstallSection(state: DetailsUiState, vm: DetailsViewModel) {
                     Text(stringResource(R.string.verifying))
                 }
                 is InstallUiState.Verified -> {
-                    Report(install.prepared.report, state.app?.repo?.path.orEmpty())
+                    Report(install.prepared.report, state.subject?.repo?.path.orEmpty())
                     Button(onClick = vm::onConfirmInstall) { Text(stringResource(R.string.action_confirm_install)) }
                 }
                 is InstallUiState.Blocked -> {
                     Text(stringResource(R.string.install_blocked), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
-                    Report(install.report, state.app?.repo?.path.orEmpty())
+                    Report(install.report, state.subject?.repo?.path.orEmpty())
                 }
                 is InstallUiState.DownloadFailed -> {
                     val reason = downloadFailureText(install.reason, install.detail)
@@ -484,7 +543,7 @@ private fun StatusLine(status: CheckStatus, text: String) {
 }
 
 @Composable
-private fun findingText(kind: FindingKind): String = stringResource(
+internal fun findingText(kind: FindingKind): String = stringResource(
     when (kind) {
         FindingKind.SIZE_MISMATCH -> R.string.finding_size_mismatch
         FindingKind.DIGEST_MISMATCH -> R.string.finding_digest_mismatch
@@ -506,6 +565,13 @@ private fun findingText(kind: FindingKind): String = stringResource(
         FindingKind.SPLIT_SET_INCONSISTENT -> R.string.finding_split_set_inconsistent
         FindingKind.UNEXPECTED_FORMAT -> R.string.finding_unexpected_format
         FindingKind.PRERELEASE -> R.string.finding_prerelease
+        FindingKind.REPO_NOT_FOUND -> R.string.finding_repo_not_found
+        FindingKind.REPO_UNAVAILABLE -> R.string.finding_repo_unavailable
+        FindingKind.REPO_ID_CHANGED -> R.string.finding_repo_id_changed
+        FindingKind.REPO_OWNER_CHANGED -> R.string.finding_repo_owner_changed
+        FindingKind.REPO_RENAMED -> R.string.finding_repo_renamed
+        FindingKind.NO_INSTALLABLE_RELEASE -> R.string.finding_no_installable_release
+        FindingKind.INSTALLED_STATE_MISMATCH -> R.string.finding_installed_state_mismatch
     },
 )
 

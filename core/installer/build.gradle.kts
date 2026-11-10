@@ -24,7 +24,7 @@ android {
 androidComponents {
     onVariants { variant ->
         // A műszeres teszt ugyanazokat a teszt-kulccsal aláírt APK-kat használja, mint a core:apk JVM-tesztjei.
-        variant.androidTest?.sources?.assets?.addStaticSourceDirectory("../apk/src/test/resources")
+        variant.androidTest?.sources?.assets?.addStaticSourceDirectory("../apk/src/testFixtures/resources")
     }
 }
 
@@ -32,6 +32,7 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:apk"))
     api(project(":core:network"))
+    api(project(":core:update"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 

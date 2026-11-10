@@ -66,6 +66,15 @@ abstract class CatalogDao {
     @Query("SELECT * FROM catalog_app WHERE catalogId = :id")
     abstract suspend fun byId(id: String): CatalogAppEntity?
 
+    /** Egy URL-ből hozzáadott repó katalógusbeli megfelelője (a stabil azonosító vagy az útvonal alapján). */
+    @Query(
+        """SELECT * FROM catalog_app WHERE provider = :provider AND
+           ((:repositoryId IS NOT NULL AND repositoryId = :repositoryId) OR
+            (repoOwner = :owner COLLATE NOCASE AND repoName = :name COLLATE NOCASE))
+           ORDER BY repositoryId IS NULL LIMIT 1""",
+    )
+    abstract suspend fun byRepo(provider: String, repositoryId: Long?, owner: String, name: String): CatalogAppEntity?
+
     @Query("SELECT * FROM catalog_app WHERE (:category IS NULL OR category = :category) ORDER BY name COLLATE NOCASE LIMIT :limit")
     abstract suspend fun browse(category: String?, limit: Int): List<CatalogAppEntity>
 

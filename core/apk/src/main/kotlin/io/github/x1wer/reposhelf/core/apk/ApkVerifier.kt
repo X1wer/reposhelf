@@ -83,18 +83,28 @@ data class VerificationReport(
     val signerCertSha256: List<String> get() = facts?.signers?.current.orEmpty()
 }
 
+/** Az 5. lépés (integritás) eredménye: méret, SHA-256, a szolgáltató ellenőrzőösszege, ZIP-szerkezet. */
+data class IntegrityReport(val items: List<CheckItem>, val findings: List<Finding>, val nativeAbis: Set<String>) {
+    val passed: Boolean get() = findings.none { it.severity == Severity.CRITICAL }
+}
+
 /**
  * A letöltött APK (vagy split-készlet) tényleges ellenőrzése (docs/ARCHITECTURE.md 9. pont, 5–6. lépés és a 7. lépés
  * előfeltételei). Tiszta logika: a kriptográfiai munkát az [ApkInspector] végzi.
+ *
+ * A két lépés külön is hívható és tesztelhető (C. 34.): [checkIntegrity] (5.) és [checkSignature] (6.).
  */
 class ApkVerifier(private val inspector: ApkInspector) {
 
-    fun verify(files: List<DownloadedApk>, context: VerificationContext): VerificationReport {
+    fun verify(files: List<DownloadedApk>, context: VerificationContext): VerificationReport =
+        checkSignature(files, checkIntegrity(files), context)
+
+    /** 5. lépés: integritás. Kicsomagolás nélkül, csak a fájlok bájtjain és a ZIP központi könyvtárán dolgozik. */
+    fun checkIntegrity(files: List<DownloadedApk>): IntegrityReport {
         require(files.isNotEmpty())
         val findings = mutableListOf<Finding>()
         val integrity = mutableListOf<CheckItem>()
-
-        // 5. lépés: integritás.
+        val nativeAbis = LinkedHashSet<String>()
         for (file in files) {
             if (file.size != file.expectedSize || file.file.length() != file.expectedSize) {
                 integrity += CheckItem(Check.SIZE, CheckStatus.FAILED, "${file.size} / ${file.expectedSize} bájt")
@@ -114,36 +124,41 @@ class ApkVerifier(private val inspector: ApkInspector) {
                     findings += Finding(FindingKind.DIGEST_MISMATCH, Severity.CRITICAL, file.file.name)
                 }
             }
-        }
-
-        val nativeAbis = LinkedHashSet<String>()
-        val inspected = mutableListOf<ApkFacts>()
-        var signatureValid = CheckStatus.OK
-        for (file in files) {
             val zip = ZipInspector.inspect(file.file)
             when {
                 zip == null || !zip.hasManifest -> {
                     integrity += CheckItem(Check.APK_STRUCTURE, CheckStatus.FAILED, file.file.name)
                     findings += Finding(FindingKind.INVALID_APK, Severity.CRITICAL, file.file.name)
-                    signatureValid = CheckStatus.NOT_CHECKED
-                    continue
                 }
                 zip.suspiciousEntry != null -> {
                     integrity += CheckItem(Check.APK_STRUCTURE, CheckStatus.FAILED, zip.suspiciousEntry)
                     findings += Finding(FindingKind.INVALID_APK, Severity.CRITICAL, zip.suspiciousEntry)
-                    signatureValid = CheckStatus.NOT_CHECKED
-                    continue
                 }
                 else -> {
                     integrity += CheckItem(Check.APK_STRUCTURE, CheckStatus.OK)
                     nativeAbis += zip.nativeAbis
                 }
             }
-            // 6. lépés, 1. szint: technikai érvényesség – csak sértetlen fájlon van értelme.
-            if (findings.any { it.severity == Severity.CRITICAL }) {
-                signatureValid = CheckStatus.NOT_CHECKED
-                continue
-            }
+        }
+        return IntegrityReport(integrity, findings, nativeAbis)
+    }
+
+    /**
+     * 6. lépés: az aláírás három szintje (C. 18.) és a csomag tényleges adatainak összevetése a várttal.
+     * Csak sértetlen fájlokon fut: ha az [integrity] nem ment át, az aláírás „nem ellenőrzött”.
+     */
+    fun checkSignature(files: List<DownloadedApk>, integrity: IntegrityReport, context: VerificationContext): VerificationReport {
+        require(files.isNotEmpty())
+        val findings = integrity.findings.toMutableList()
+        val nativeAbis = integrity.nativeAbis
+        if (!integrity.passed) {
+            return VerificationReport(integrity.items, CheckStatus.NOT_CHECKED, SignerIdentity.NOT_CHECKED, emptyList(), null, emptyList(), nativeAbis, findings)
+        }
+
+        // 1. szint: technikai érvényesség (az eszköz saját verifierje).
+        val inspected = mutableListOf<ApkFacts>()
+        var signatureValid = CheckStatus.OK
+        for (file in files) {
             when (val result = inspector.inspect(file.file)) {
                 is ApkInspection.Invalid -> {
                     signatureValid = CheckStatus.FAILED
@@ -152,10 +167,10 @@ class ApkVerifier(private val inspector: ApkInspector) {
                 is ApkInspection.Valid -> inspected += result.facts
             }
         }
-
         if (findings.any { it.severity == Severity.CRITICAL } || inspected.size != files.size) {
-            return VerificationReport(integrity, signatureValid, SignerIdentity.NOT_CHECKED, emptyList(), null, inspected, nativeAbis, findings)
+            return VerificationReport(integrity.items, signatureValid, SignerIdentity.NOT_CHECKED, emptyList(), null, inspected, nativeAbis, findings)
         }
+        val integrityItems = integrity.items
 
         val compatibility = mutableListOf<CheckItem>()
         val base = inspected.singleOrNull { it.splitName == null }
@@ -167,13 +182,13 @@ class ApkVerifier(private val inspector: ApkInspector) {
             if (!consistent) {
                 compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.FAILED)
                 findings += Finding(FindingKind.SPLIT_SET_INCONSISTENT, Severity.CRITICAL)
-                return VerificationReport(integrity, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, base, splits, nativeAbis, findings)
+                return VerificationReport(integrityItems, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, base, splits, nativeAbis, findings)
             }
             compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.OK, splits.joinToString { it.splitName.orEmpty() })
         } else if (base == null) {
             // Egyetlen fájl, de split: önmagában nem telepíthető.
             findings += Finding(FindingKind.SPLIT_SET_INCONSISTENT, Severity.CRITICAL, "alap-APK nélküli split")
-            return VerificationReport(integrity, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, null, splits, nativeAbis, findings)
+            return VerificationReport(integrityItems, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, null, splits, nativeAbis, findings)
         }
         val facts = checkNotNull(base)
 
@@ -242,7 +257,7 @@ class ApkVerifier(private val inspector: ApkInspector) {
             facts.signers.current.joinToString(),
         )
 
-        return VerificationReport(integrity, signatureValid, identity, compatibility, facts, splits, nativeAbis, findings, inspected)
+        return VerificationReport(integrityItems, signatureValid, identity, compatibility, facts, splits, nativeAbis, findings, inspected)
     }
 
     private fun identity(signers: SignerInfo, context: VerificationContext, findings: MutableList<Finding>): SignerIdentity {

@@ -3,6 +3,7 @@
 
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+// A frissítési folyamat 8 lépése (docs/ARCHITECTURE.md 9. pont), platformfüggőség nélkül.
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.android.lint)
@@ -22,8 +23,12 @@ kotlin {
 
 dependencies {
     api(project(":core:model"))
-    implementation(project(":core:apk"))
-    implementation(project(":core:source"))
+    api(project(":core:apk"))
+    api(project(":core:source"))
+    api(project(":core:network"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(testFixtures(project(":core:apk")))
+    testImplementation(testFixtures(project(":core:network")))
 }

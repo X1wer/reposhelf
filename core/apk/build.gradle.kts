@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.android.lint)
+    `java-test-fixtures`
 }
 
 java {
@@ -22,7 +23,9 @@ kotlin {
 
 dependencies {
     api(project(":core:model"))
-    // Csak tesztben: a JVM-es ApkInspector-implementáció a teszt-fixture-ökhöz (D-031).
+    // Csak tesztben: a JVM-es ApkInspector-implementáció és a teszt-APK-k (testFixtures; D-031). Más modulok
+    // tesztjei is használják: testImplementation(testFixtures(project(":core:apk"))).
+    testFixturesImplementation(libs.apksig)
     testImplementation(libs.apksig)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
