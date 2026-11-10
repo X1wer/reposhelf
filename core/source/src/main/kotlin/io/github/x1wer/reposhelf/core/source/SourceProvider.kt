@@ -10,6 +10,7 @@ import io.github.x1wer.reposhelf.core.model.Release
 import io.github.x1wer.reposhelf.core.model.RepoMetadata
 import io.github.x1wer.reposhelf.core.model.RepoRef
 import io.github.x1wer.reposhelf.core.network.FetchResponse
+import io.github.x1wer.reposhelf.core.network.HttpPolicy
 import io.github.x1wer.reposhelf.core.network.Validators
 import java.time.Instant
 
@@ -72,6 +73,9 @@ interface SourceProvider {
 
     /** A legutóbbi [limit] kiadás (draftokkal együtt, ha a szolgáltató visszaadja; a szűrés a hívó dolga). */
     suspend fun releases(ref: RepoRef, validators: Validators? = null, limit: Int = 10): Fetch<List<Release>>
+
+    /** A kiadási állományok letöltésének hálózati szabálya: mely hosztokra vezethet a letöltés (az átirányításokkal együtt). */
+    fun downloadPolicy(maxBytes: Long): HttpPolicy
 }
 
 class ProviderRegistry(providers: List<SourceProvider>) {

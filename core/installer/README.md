@@ -1,5 +1,8 @@
 # :core:installer
 
-PackageInstaller-sessionök, eredmény-receiver, telepített csomagok lekérdezése, platform-alapú `ApkInspector`. Tervezett: 3–4. munkamenet.
-
-A modul a 2. munkamenetben még csak vázként létezik (docs/ARCHITECTURE.md 2. pont, D-010).
+Android-platformréteg (docs/ARCHITECTURE.md 11. pont):
+- `PlatformApkInspector`: APK-ellenőrzés a platform verifierjével (D-031);
+- `InstalledPackages`: telepített csomagok, „ismeretlen források” engedély, eszközprofil;
+- `PackageInstallerGateway`, `InstallResultReceiver`, `InstallEvents`: telepítés PackageInstaller-sessionnel;
+- `InstallCoordinator`: letöltés → ellenőrzés → telepítés;
+- `Shortcuts`: kezdőképernyős parancsikon (C. 8.).

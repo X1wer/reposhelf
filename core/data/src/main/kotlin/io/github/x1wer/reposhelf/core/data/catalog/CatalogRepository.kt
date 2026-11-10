@@ -233,6 +233,8 @@ class CatalogRepository(
             .mapNotNull { it.toModelOrNull() }
     }
 
+    suspend fun app(id: String): CatalogApp? = dao.byId(id)?.toModelOrNull()
+
     private fun CatalogStateEntity.toStatus() = CatalogStatus(
         hasCatalog = true,
         source = runCatching { CatalogSource.valueOf(source) }.getOrNull(),

@@ -67,6 +67,10 @@ dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:source"))
     implementation(project(":core:data"))
+    implementation(project(":core:apk"))
+    implementation(project(":core:installer"))
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -47,3 +47,36 @@ object HttpClients {
             .apply(configure)
             .build()
 }
+
+/**
+ * A README-képek kliense (D-013): átirányítást követ (a GitHub-képek aláírt CDN-URL-re irányítanak), de minden
+ * lépésben csak HTTPS-t enged, és a válasz méretét korlátozza. Hogy egy külső hosztú kép egyáltalán betöltődik-e,
+ * azt a felhasználó dönti el a felületen (adatvédelem, C. 31.).
+ */
+object ImageHttpClient {
+    const val MAX_IMAGE_BYTES = 10L * 1024 * 1024
+
+    fun create(userAgent: String): OkHttpClient = OkHttpClient.Builder()
+        .followRedirects(true)
+        .followSslRedirects(false)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor(UserAgentInterceptor(userAgent))
+        // Hálózati interceptor: az átirányítás minden egyes lépésén lefut.
+        .addNetworkInterceptor(HttpsOnlyInterceptor)
+        .addNetworkInterceptor(ImageSizeInterceptor)
+        .build()
+}
+
+internal object ImageSizeInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val response = chain.proceed(chain.request())
+        val length = response.body.contentLength()
+        if (length > ImageHttpClient.MAX_IMAGE_BYTES) {
+            response.close()
+            throw IOException("A kép túl nagy: $length bájt")
+        }
+        return response
+    }
+}

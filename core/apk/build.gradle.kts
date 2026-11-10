@@ -21,6 +21,8 @@ kotlin {
 
 dependencies {
     api(project(":core:model"))
+    // Csak tesztben: a JVM-es ApkInspector-implementáció a teszt-fixture-ökhöz (D-031).
+    testImplementation(libs.apksig)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
 }

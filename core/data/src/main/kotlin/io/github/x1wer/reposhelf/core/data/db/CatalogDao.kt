@@ -63,6 +63,9 @@ abstract class CatalogDao {
     )
     abstract suspend fun searchInfix(pattern: String, category: String?, limit: Int): List<CatalogAppEntity>
 
+    @Query("SELECT * FROM catalog_app WHERE catalogId = :id")
+    abstract suspend fun byId(id: String): CatalogAppEntity?
+
     @Query("SELECT * FROM catalog_app WHERE (:category IS NULL OR category = :category) ORDER BY name COLLATE NOCASE LIMIT :limit")
     abstract suspend fun browse(category: String?, limit: Int): List<CatalogAppEntity>
 

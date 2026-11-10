@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 RepoShelf contributors
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  A telepítéshez szükséges jogosultságok, indoklással (C. 7.3.: nincs rejtett vagy indokolatlan jogosultság):
+  - REQUEST_INSTALL_PACKAGES: a PackageInstaller-session használata. A felhasználónak az „ismeretlen forrásból
+    származó alkalmazások telepítése” engedélyt külön meg kell adnia (Android 8+, alkalmazásonként).
+  - ENFORCE_UPDATE_OWNERSHIP (normál, Android 14+): első telepítéskor kérhetjük, hogy más telepítő csak a
+    felhasználó jóváhagyásával frissíthesse az appot (D-043).
+  Package visibility: a MAIN/LAUNCHER query QUERY_ALL_PACKAGES nélkül teszi láthatóvá az indítható appokat, így
+  kiolvasható a telepített verzió és az aláíró (D-040). A telepítő NEM látja automatikusan a saját telepítéseit.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application>
+        <!-- Csak a PackageInstaller küld ide (explicit, mutábilis PendingIntent-tel); kívülről nem érhető el. -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

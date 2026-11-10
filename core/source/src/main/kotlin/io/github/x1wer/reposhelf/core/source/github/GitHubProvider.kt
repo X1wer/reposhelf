@@ -83,6 +83,13 @@ class GitHubProvider(
         }
     }
 
+    /**
+     * A kiadási állományok a `github.com/…/releases/download/…` címről a GitHub CDN-jére irányítanak
+     * (jelenleg `release-assets.githubusercontent.com`). Konkrét CDN-hosztnevet nem rögzítünk, mert a GitHub
+     * dokumentáció nélkül váltja (docs/RESEARCH.md §6), ezért a `*.githubusercontent.com` engedélyezett.
+     */
+    override fun downloadPolicy(maxBytes: Long): HttpPolicy = HttpPolicy.of("github.com", "*.githubusercontent.com", maxBodyBytes = maxBytes)
+
     private fun request(url: HttpUrl, validators: Validators?, policy: HttpPolicy, accept: String): FetchRequest {
         val headers = buildMap {
             put("Accept", accept)

@@ -24,6 +24,9 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:network"))
     implementation(libs.kotlinx.serialization.json)
+    // README-feldolgozás (D-013): BSD-2-Clause, Androidon API 24-től tesztelt.
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.gfm.tables)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.okhttp.tls)

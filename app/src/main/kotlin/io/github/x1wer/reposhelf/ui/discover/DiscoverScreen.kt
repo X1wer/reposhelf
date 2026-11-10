@@ -4,6 +4,7 @@
 package io.github.x1wer.reposhelf.ui.discover
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,7 +74,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 @Composable
-fun DiscoverScreen(viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory)) {
+fun DiscoverScreen(onOpenApp: (String) -> Unit, viewModel: DiscoverViewModel = viewModel(factory = DiscoverViewModel.Factory)) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -95,6 +96,7 @@ fun DiscoverScreen(viewModel: DiscoverViewModel = viewModel(factory = DiscoverVi
         onQueryChange = viewModel::onQueryChange,
         onCategorySelected = viewModel::onCategorySelected,
         onRefresh = viewModel::refresh,
+        onOpenApp = onOpenApp,
     )
 }
 
@@ -116,6 +118,7 @@ private fun DiscoverContent(
     onQueryChange: (String) -> Unit,
     onCategorySelected: (CatalogCategory?) -> Unit,
     onRefresh: () -> Unit,
+    onOpenApp: (String) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
     Scaffold(
@@ -154,7 +157,7 @@ private fun DiscoverContent(
             )
             CategoryChips(state.category, state.categoryCounts, onCategorySelected)
             CatalogStatusBanner(state.status, state.isInitializing)
-            ResultList(state)
+            ResultList(state, onOpenApp)
         }
     }
 }
@@ -225,7 +228,7 @@ private fun CatalogStatusBanner(status: CatalogStatus, initializing: Boolean) {
 }
 
 @Composable
-private fun ResultList(state: DiscoverUiState) {
+private fun ResultList(state: DiscoverUiState, onOpenApp: (String) -> Unit) {
     if (state.isInitializing) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopCenter) {
             Text(stringResource(R.string.catalog_loading))
@@ -243,7 +246,7 @@ private fun ResultList(state: DiscoverUiState) {
             }
         }
         items(state.results, key = { it.id }) { app ->
-            AppRow(app)
+            AppRow(app, onClick = { onOpenApp(app.id) })
             HorizontalDivider()
         }
         if (state.status.hasCatalog) {
@@ -266,8 +269,9 @@ private fun ResultList(state: DiscoverUiState) {
 }
 
 @Composable
-private fun AppRow(app: CatalogApp) {
+private fun AppRow(app: CatalogApp, onClick: () -> Unit) {
     ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
         headlineContent = { Text(app.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         overlineContent = { Text(stringResource(app.category.labelRes())) },
         // A rövid leírás és az ikon a repóból jön (3. munkamenet); addig a repó útvonala látszik, kitalált adat nincs.

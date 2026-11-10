@@ -3,6 +3,7 @@
 
 package io.github.x1wer.reposhelf.ui
 
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -23,12 +24,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.x1wer.reposhelf.R
 import io.github.x1wer.reposhelf.ui.common.PlaceholderScreen
+import io.github.x1wer.reposhelf.ui.details.DetailsScreen
 import io.github.x1wer.reposhelf.ui.discover.DiscoverScreen
 
 /** A főmenü (C. 22.1.): Felfedezés, Alkalmazásaim, Frissítések, Saját források, Beállítások. */
@@ -39,6 +43,10 @@ enum class TopLevelDestination(val route: String, @StringRes val labelRes: Int, 
     SOURCES("sources", R.string.nav_sources, Icons.Filled.Add),
     SETTINGS("settings", R.string.nav_settings, Icons.Filled.Settings),
 }
+
+private const val DETAILS_ROUTE = "app"
+private const val DETAILS_ARG = "id"
+private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
 
 @Composable
 fun RepoShelfApp() {
@@ -73,7 +81,17 @@ fun RepoShelfApp() {
             startDestination = TopLevelDestination.DISCOVER.route,
             modifier = Modifier.padding(innerPadding),
         ) {
-            composable(TopLevelDestination.DISCOVER.route) { DiscoverScreen() }
+            composable(TopLevelDestination.DISCOVER.route) {
+                DiscoverScreen(onOpenApp = { id -> navController.navigate("$DETAILS_ROUTE/${Uri.encode(id)}") })
+            }
+            composable(
+                route = "$DETAILS_ROUTE/{$DETAILS_ARG}",
+                arguments = listOf(navArgument(DETAILS_ARG) { type = NavType.StringType }),
+            ) { entry ->
+                // Az argumentum a saját belső útvonalunkból jön, de validáljuk (nincs exportált deep link).
+                val id = entry.arguments?.getString(DETAILS_ARG).orEmpty()
+                if (CATALOG_ID.matches(id)) DetailsScreen(catalogId = id, onBack = { navController.popBackStack() })
+            }
             composable(TopLevelDestination.MY_APPS.route) {
                 PlaceholderScreen(R.string.nav_my_apps, R.string.placeholder_my_apps)
             }
