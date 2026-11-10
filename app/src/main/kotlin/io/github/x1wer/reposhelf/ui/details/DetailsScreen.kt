@@ -77,7 +77,12 @@ import io.github.x1wer.reposhelf.core.installer.Shortcuts
 import io.github.x1wer.reposhelf.core.model.FindingKind
 import io.github.x1wer.reposhelf.core.model.Severity
 import io.github.x1wer.reposhelf.core.network.DownloadFailure
+import io.github.x1wer.reposhelf.ui.common.NotificationPermissionGate
 import io.github.x1wer.reposhelf.ui.common.labelRes
+import io.github.x1wer.reposhelf.ui.settings.delayLabel
+import io.github.x1wer.reposhelf.core.update.GlobalSettings
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -122,6 +127,7 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
             item { Info(state) }
             item { TrackingRow(state, vm) }
             item { RepoStateNotice(state, vm) }
+            item { RulesSection(state, vm) }
             item { ReleaseInfo(state, vm) }
             item { InstallSection(state, vm) }
             state.releaseNotes?.let { notes ->
@@ -216,11 +222,17 @@ private fun TrackingRow(state: DetailsUiState, vm: DetailsViewModel) {
     // Saját hozzáadású appnál a sor mindig létezik; katalógusbelinél a követés hozza létre.
     if (tracked == null && subject.catalogApp == null) return
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        FilterChip(
-            selected = tracked?.isFollowed == true,
-            onClick = vm::toggleFollow,
-            label = { Text(stringResource(if (tracked?.isFollowed == true) R.string.action_following else R.string.action_follow)) },
-        )
+        // Az első követés a megfelelő pillanat az értesítési engedély kérésére (magyarázattal, csak egyszer; ARCH 12.).
+        NotificationPermissionGate(onlyOnce = true) { requestNotifications ->
+            FilterChip(
+                selected = tracked?.isFollowed == true,
+                onClick = {
+                    if (tracked?.isFollowed != true) requestNotifications()
+                    vm.toggleFollow()
+                },
+                label = { Text(stringResource(if (tracked?.isFollowed == true) R.string.action_following else R.string.action_follow)) },
+            )
+        }
         FilterChip(
             selected = tracked?.isFavorite == true,
             onClick = vm::toggleFavorite,
@@ -255,6 +267,54 @@ private fun RepoStateNotice(state: DetailsUiState, vm: DetailsViewModel) {
                 OutlinedButton(onClick = vm::acceptRepositoryIdentity) { Text(stringResource(R.string.action_accept_repo_identity)) }
             }
         }
+    }
+}
+
+/** Alkalmazásonkénti frissítési szabályok (C. 12.6.): mindegyik „alapértelmezett” (globális), be vagy ki. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RulesSection(state: DetailsUiState, vm: DetailsViewModel) {
+    val tracked = state.tracked ?: return
+    if (!tracked.isFollowed) return
+    val global by vm.globalSettings.collectAsStateWithLifecycle()
+    val o = tracked.overrides
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            SectionTitle(stringResource(R.string.rules_title))
+            Text(stringResource(R.string.rules_note), style = MaterialTheme.typography.bodySmall)
+            TriRule(stringResource(R.string.rule_monitoring), o.checkEnabled, true) { vm.setOverrides(o.copy(checkEnabled = it)) }
+            TriRule(stringResource(R.string.rule_auto_download), o.autoDownload, global.autoDownload) { vm.setOverrides(o.copy(autoDownload = it)) }
+            TriRule(stringResource(R.string.rule_auto_install), o.autoInstall, global.autoInstall) { vm.setOverrides(o.copy(autoInstall = it)) }
+            TriRule(stringResource(R.string.rule_prereleases), o.includePrereleases, global.includePrereleases) { vm.setOverrides(o.copy(includePrereleases = it)) }
+            TriRule(stringResource(R.string.rule_notify), o.notify, global.notifyUpdates) { vm.setOverrides(o.copy(notify = it)) }
+            Text(stringResource(R.string.rule_delay), style = MaterialTheme.typography.bodyMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = o.releaseDelayDays == null,
+                    onClick = { vm.setOverrides(o.copy(releaseDelayDays = null)) },
+                    label = { Text(stringResource(R.string.rule_default, delayLabel(global.releaseDelayDays))) },
+                )
+                GlobalSettings.RELEASE_DELAY_CHOICES.forEach { days ->
+                    FilterChip(
+                        selected = o.releaseDelayDays == days,
+                        onClick = { vm.setOverrides(o.copy(releaseDelayDays = days)) },
+                        label = { Text(delayLabel(days)) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TriRule(label: String, value: Boolean?, globalValue: Boolean, onChange: (Boolean?) -> Unit) {
+    Text(label, style = MaterialTheme.typography.bodyMedium)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val globalText = stringResource(if (globalValue) R.string.rule_on else R.string.rule_off)
+        FilterChip(selected = value == null, onClick = { onChange(null) }, label = { Text(stringResource(R.string.rule_default, globalText)) })
+        FilterChip(selected = value == true, onClick = { onChange(true) }, label = { Text(stringResource(R.string.rule_on)) })
+        FilterChip(selected = value == false, onClick = { onChange(false) }, label = { Text(stringResource(R.string.rule_off)) })
     }
 }
 
@@ -321,6 +381,7 @@ private fun InstallSection(state: DetailsUiState, vm: DetailsViewModel) {
                     Text(stringResource(R.string.verifying))
                 }
                 is InstallUiState.Verified -> {
+                    if (state.readyFromBackground) Text(stringResource(R.string.details_ready_from_background), style = MaterialTheme.typography.bodySmall)
                     Report(install.prepared.report, state.subject?.repo?.path.orEmpty())
                     Button(onClick = vm::onConfirmInstall) { Text(stringResource(R.string.action_confirm_install)) }
                 }

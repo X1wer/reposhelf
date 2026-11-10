@@ -226,6 +226,23 @@ class TrackedAppsRepositoryTest {
     }
 
     @Test
+    fun globalSettingsApplyToChecks_andPerAppOverridesWin(): Unit = runBlocking {
+        val global = io.github.x1wer.reposhelf.core.update.GlobalSettings(includePrereleases = true)
+        val repo = TrackedAppsRepository(db, ProviderRegistry(listOf(provider)), { installedApps[it] }, { device }, budget, clock) { global }
+        publish("owner/app", 42, release(10, "v1.0", asset(1)), release(11, "v1.1-beta", asset(2), prerelease = true, published = "2026-10-05T00:00:00Z"))
+        val id = repo.follow(assertIs(repo.preview("owner/app")))
+        assertEquals("v1.1-beta", repo.checkOne(id)?.latest?.tag, "a globális beállítás szerint az előzetes kiadás is jelölt")
+        repo.setOverrides(id, io.github.x1wer.reposhelf.core.update.AppOverrides(includePrereleases = false))
+        assertEquals("v1.0", repo.checkOne(id)?.latest?.tag, "az alkalmazásonkénti felülírás nyer")
+        repo.setCheckEnabled(id, false)
+        assertEquals(false, repo.get(id)?.overrides?.checkEnabled)
+        assertEquals(false, repo.get(id)?.overrides?.includePrereleases, "a többi felülírás megmarad")
+        provider.calls.clear()
+        assertEquals(0, repo.checkAll().checked)
+        assertTrue(provider.calls.isEmpty(), "kikapcsolt figyelésnél nincs kérés")
+    }
+
+    @Test
     fun recordInstall_pinsOnFirstInstall_andMergesRotation(): Unit = runBlocking {
         publish("owner/app", 42, release(10, "v1.0", asset(1)))
         val id = repository.follow(assertIs(repository.preview("owner/app")))

@@ -4,6 +4,7 @@
 package io.github.x1wer.reposhelf.core.update
 
 import io.github.x1wer.reposhelf.core.apk.ReleaseResolver
+import io.github.x1wer.reposhelf.core.apk.ReleaseResolver.date
 import io.github.x1wer.reposhelf.core.apk.ResolvedReleases
 import io.github.x1wer.reposhelf.core.model.Finding
 import io.github.x1wer.reposhelf.core.model.FindingKind
@@ -15,6 +16,8 @@ import io.github.x1wer.reposhelf.core.model.Severity
 import io.github.x1wer.reposhelf.core.source.Fetch
 import io.github.x1wer.reposhelf.core.source.ProviderRegistry
 import io.github.x1wer.reposhelf.core.source.SourceError
+import java.time.Clock
+import java.time.Duration
 
 /** Egy követett alkalmazás forrása, a korábban rögzített azonosítókkal (C. 19.). */
 data class TrackedSource(
@@ -24,6 +27,8 @@ data class TrackedSource(
     /** A rögzített tulajdonos-azonosító; `null`, ha nem ismert. */
     val ownerId: Long?,
     val includePrereleases: Boolean,
+    /** Új kiadások késleltetése (C. 12.6.): ennél frissebb kiadást még nem ajánlunk. */
+    val releaseDelay: Duration = Duration.ZERO,
 )
 
 /** A repó azonossága a rögzítetthez képest. */
@@ -54,7 +59,11 @@ data class Discovery(
  * Kérésszám: két API-hívás (repó + kiadások). A repó lekérése azért kell, mert csak így ismerhető fel a stabil
  * azonosító alapján az átnevezés, a tulajdonosváltás és a repó-eltérítés (azonos név, más repó; C. 19.).
  */
-class ReleaseDiscovery(private val providers: ProviderRegistry, private val releaseLimit: Int = 10) {
+class ReleaseDiscovery(
+    private val providers: ProviderRegistry,
+    private val releaseLimit: Int = 10,
+    private val clock: Clock = Clock.systemUTC(),
+) {
 
     suspend fun discover(source: TrackedSource): StepResult<Discovery> {
         val provider = providers.get(source.ref.provider) ?: return StepResult.Failed(UpdateFailure.Other("provider"))
@@ -101,10 +110,18 @@ class ReleaseDiscovery(private val providers: ProviderRegistry, private val rele
             Fetch.NotFound -> emptyList()
             else -> return failure(result, findings)
         }
-        val resolved = ReleaseResolver.resolve(releases)
+        // Késleltetés: a túl friss kiadások kimaradnak, így a legutóbbi „elég régi” kiadás lesz a jelölt.
+        val cutoff = clock.instant().minus(source.releaseDelay)
+        val eligible = if (source.releaseDelay.isZero) releases else releases.filter { !it.date().isAfter(cutoff) }
+        val resolved = ReleaseResolver.resolve(eligible)
         val candidate = if (source.includePrereleases) resolved.latestPrerelease ?: resolved.latestStable else resolved.latestStable
         if (candidate == null) {
-            findings += Finding(FindingKind.NO_INSTALLABLE_RELEASE, Severity.INFO, if (resolved.hasAnyRelease) "no-apk" else "no-release")
+            val detail = when {
+                eligible.size < releases.size && releases.any { !it.isDraft } -> "delayed"
+                resolved.hasAnyRelease -> "no-apk"
+                else -> "no-release"
+            }
+            findings += Finding(FindingKind.NO_INSTALLABLE_RELEASE, Severity.INFO, detail)
         }
         return StepResult.Ok(Discovery(repo, identity, resolved, candidate), findings)
     }

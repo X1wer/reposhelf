@@ -26,9 +26,18 @@ import kotlin.test.assertTrue
 @Config(sdk = [35])
 class MigrationTest {
 
-    private fun createVersion1(file: File) {
-        val schema = JSONObject(File("schemas/${AppDatabase::class.java.name}/1.json").readText()).getJSONObject("database")
-        assertEquals(1, schema.getInt("version"))
+    private fun createVersion1(file: File) = createVersion(file, 1) { db ->
+        db.execSQL(
+            """INSERT INTO catalog_app (catalogId, name, provider, repoOwner, repoName, repositoryId, packageName,
+               signingCertSha256, minVersionCode, keywords, category, assetFilter, searchName, searchKeywords)
+               VALUES ('aegis', 'Aegis', 'github', 'beemdevelopment', 'Aegis', 6, 'com.beemdevelopment.aegis', '', NULL, '', 'security', NULL, 'aegis', '')""",
+        )
+    }
+
+    /** Valódi, az exportált sémából felépített adatbázis a megadott verzióval (Room nélkül). */
+    private fun createVersion(file: File, version: Int, seed: (SQLiteDatabase) -> Unit) {
+        val schema = JSONObject(File("schemas/${AppDatabase::class.java.name}/$version.json").readText()).getJSONObject("database")
+        assertEquals(version, schema.getInt("version"))
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
             val entities = schema.getJSONArray("entities")
             for (i in 0 until entities.length()) {
@@ -42,12 +51,43 @@ class MigrationTest {
             }
             val setup = schema.getJSONArray("setupQueries")
             for (i in 0 until setup.length()) db.execSQL(setup.getString(i))
+            seed(db)
+            db.version = version
+        }
+    }
+
+    @Test
+    fun version2_migratesTo3_keepingTrackedAppsPinsAndOverrides() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = context.getDatabasePath("migration-test-2.db").apply { parentFile?.mkdirs(); delete() }
+        createVersion(file, 2) { db ->
             db.execSQL(
-                """INSERT INTO catalog_app (catalogId, name, provider, repoOwner, repoName, repositoryId, packageName,
-                   signingCertSha256, minVersionCode, keywords, category, assetFilter, searchName, searchKeywords)
-                   VALUES ('aegis', 'Aegis', 'github', 'beemdevelopment', 'Aegis', 6, 'com.beemdevelopment.aegis', '', NULL, '', 'security', NULL, 'aegis', '')""",
+                """INSERT INTO tracked_app (id, origin, catalogId, provider, repoOwner, repoName, repoKey, repoId, repoOwnerId, packageName,
+                   displayName, isFollowed, isFavorite, installedViaUs, everInstalled, addedAtMillis, lastCheckAtMillis, checkStatus,
+                   checkConfirmed, lastErrorKind, lastErrorAtMillis, repoState, repoStateDetail, latestReleaseId, latestTag, latestName,
+                   latestPublishedAtMillis, latestIsPrerelease, latestHtmlUrl, installedReleaseId, installedReleasePublishedAtMillis,
+                   installedReleaseVersionCode)
+                   VALUES (7, 'USER', NULL, 'github', 'owner', 'app', 'github:owner/app', 42, 1, 'com.example', 'App', 1, 0, 1, 1, 0, NULL,
+                   'UP_TO_DATE', 1, NULL, NULL, 'OK', NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL)""",
             )
-            db.version = 1
+            db.execSQL("INSERT INTO app_settings_override (trackedAppId, checkEnabled, includePrereleases) VALUES (7, 0, 1)")
+            db.execSQL("INSERT INTO signer_pin (packageName, certsSha256, source, pinnedAtMillis, lastVerifiedAtMillis) VALUES ('com.example', 'aa', 'FIRST_INSTALL_VIA_US', 1, NULL)")
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, file.path).build()
+        try {
+            val dao = db.trackedAppDao()
+            val row = assertNotNull(dao.byId(7))
+            assertEquals("com.example", row.app.packageName)
+            assertEquals(false, row.override?.checkEnabled)
+            assertEquals(true, row.override?.includePrereleases)
+            assertNull(row.override?.autoInstall, "az új oszlop üres = a globális beállítás érvényes")
+            assertEquals("aa", dao.pin("com.example")?.certsSha256)
+            dao.upsertNotification(NotificationLogEntity("update:7", "release:1", 1))
+            assertEquals("release:1", dao.notification("update:7")?.stateHash)
+            assertEquals(3, db.openHelper.readableDatabase.version)
+        } finally {
+            db.close()
+            file.delete()
         }
     }
 
@@ -68,7 +108,7 @@ class MigrationTest {
             assertNull(tracked.pin("com.beemdevelopment.aegis"))
             tracked.upsertPin(SignerPinEntity("com.beemdevelopment.aegis", "ab", "FIRST_INSTALL_VIA_US", 1, null))
             assertEquals("ab", tracked.pin("com.beemdevelopment.aegis")?.certsSha256)
-            assertTrue(db.openHelper.readableDatabase.version == 2)
+            assertTrue(db.openHelper.readableDatabase.version == 3)
         } finally {
             db.close()
             file.delete()

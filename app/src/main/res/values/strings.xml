@@ -59,6 +59,4 @@
     <string name="refresh_unchanged">The catalog is up to date.</string>
     <string name="refresh_failed">Catalog update failed: %1$s</string>
 
-    <string name="placeholder_in_development">This screen is under development.</string>
-    <string name="placeholder_settings">Update, notification, network, display and security settings will appear here.</string>
 </resources>

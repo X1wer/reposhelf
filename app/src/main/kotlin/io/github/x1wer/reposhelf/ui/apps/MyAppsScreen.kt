@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -117,10 +118,23 @@ fun UpdatesScreen(onOpenApp: (TrackedApp) -> Unit, viewModel: TrackedListViewMod
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResume() }
     val attention = state.rows.filter { it.needsAttention }
     val followed = state.rows.count { it.app.isFollowed }
+    val notificationsAllowed by viewModel.notificationsAllowed.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.nav_updates)) }) }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize()) {
             item { CheckAllPanel(state, viewModel::checkAll) }
+            if (!notificationsAllowed && followed > 0) {
+                item {
+                    // A biztonsági figyelmeztetések és a frissítések tiltott értesítések mellett is látszanak (C. 13.).
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Text(stringResource(R.string.notif_disabled_banner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        androidx.compose.material3.TextButton(onClick = {
+                            io.github.x1wer.reposhelf.ui.common.startSafely(context, (context.applicationContext as io.github.x1wer.reposhelf.RepoShelfApplication).container.notifier.settingsIntent())
+                        }) { Text(stringResource(R.string.action_notification_settings)) }
+                    }
+                }
+            }
             item {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                     when {

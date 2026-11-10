@@ -8,7 +8,11 @@ import android.util.Log
 import io.github.x1wer.reposhelf.core.apk.ApkVerifier
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogConfig
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogRepository
+import io.github.x1wer.reposhelf.background.BackgroundUpdates
+import io.github.x1wer.reposhelf.background.Notifier
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
+import io.github.x1wer.reposhelf.core.data.notifications.NotificationLog
+import io.github.x1wer.reposhelf.core.data.settings.SettingsRepository
 import io.github.x1wer.reposhelf.core.data.details.AppDetailsRepository
 import io.github.x1wer.reposhelf.core.data.tracked.RequestBudget
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedAppsRepository
@@ -27,7 +31,13 @@ import io.github.x1wer.reposhelf.core.network.RateLimitTracker
 import io.github.x1wer.reposhelf.core.source.ProviderRegistry
 import io.github.x1wer.reposhelf.core.source.github.GitHubProvider
 import io.github.x1wer.reposhelf.core.update.ApkDownloader
+import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import io.github.x1wer.reposhelf.core.update.InstallInitiator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -45,6 +55,15 @@ import java.time.Instant
 class AppContainer(private val context: Context) {
 
     val clock: Clock = Clock.systemUTC()
+
+    /** Az alkalmazás élettartamához kötött háttér-hatókör (háttérben indított telepítések eredménye, ütemezés). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Globális beállítások (C. 12.5–12.6.). */
+    val settings by lazy { SettingsRepository.create(context) }
+
+    /** A beállítások pillanatnyi értéke szinkron olvasáshoz (pl. update ownership a telepítéskor). */
+    val settingsState: StateFlow<GlobalSettings> by lazy { settings.settings.stateIn(appScope, SharingStarted.Eagerly, GlobalSettings()) }
 
     val rateLimits = RateLimitTracker(clock)
 
@@ -100,7 +119,7 @@ class AppContainer(private val context: Context) {
 
     /** Követett, kedvenc és saját hozzáadású alkalmazások, frissítésellenőrzés (C. 9–12.1., 19.). */
     val trackedApps by lazy {
-        TrackedAppsRepository(database, sourceProviders, installedPackages, installedPackages::deviceProfile, requestBudget, clock)
+        TrackedAppsRepository(database, sourceProviders, installedPackages, installedPackages::deviceProfile, requestBudget, clock) { settings.current() }
     }
 
     val installCoordinator by lazy {
@@ -109,10 +128,17 @@ class AppContainer(private val context: Context) {
             downloader = ApkDownloader(FileDownloader(httpClient), File(context.noBackupFilesDir, "downloads")),
             verifier = ApkVerifier(PlatformApkInspector(context)),
             installed = installedPackages,
-            initiator = InstallInitiator(PackageInstallerGateway(context)),
+            initiator = InstallInitiator(PackageInstallerGateway(context) { settingsState.value.requestUpdateOwnership }),
             storedPins = trackedApps::pinnedSigners,
         )
     }
+
+    val notificationLog by lazy { NotificationLog(database, clock) }
+
+    val notifier by lazy { Notifier(context, notificationLog) }
+
+    /** Háttérbeli értesítés, letöltés és telepítés (C. 12.3–12.5.). */
+    val backgroundUpdates by lazy { BackgroundUpdates(context, this, appScope, clock) }
 
     /**
      * Az APK-ba csomagolt kezdőkatalógus: első indításkor és offline is elérhető (D-025).

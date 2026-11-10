@@ -29,6 +29,8 @@
     <string name="row_last_error">Last check did not complete (%1$s)</string>
     <string name="row_last_error_rate">Last check skipped: GitHub API limit (%1$s)</string>
     <string name="row_auto_update_off">Automatic update: off</string>
+    <string name="row_auto_update_on">Automatic update: on</string>
+    <string name="row_auto_download_on">Automatic download: on</string>
     <string name="row_monitoring_off">Update monitoring: off</string>
     <string name="origin_catalog">Catalog</string>
     <string name="origin_user">Own source</string>

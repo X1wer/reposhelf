@@ -18,6 +18,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -31,12 +32,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.x1wer.reposhelf.R
-import io.github.x1wer.reposhelf.ui.common.PlaceholderScreen
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedApp
 import io.github.x1wer.reposhelf.ui.apps.MyAppsScreen
 import io.github.x1wer.reposhelf.ui.apps.UpdatesScreen
 import io.github.x1wer.reposhelf.ui.details.DetailsKey
 import io.github.x1wer.reposhelf.ui.details.DetailsScreen
+import io.github.x1wer.reposhelf.ui.settings.SettingsScreen
 import io.github.x1wer.reposhelf.ui.sources.SourcesScreen
 import io.github.x1wer.reposhelf.ui.discover.DiscoverScreen
 
@@ -55,8 +56,14 @@ private const val TRACKED_ROUTE = "tracked"
 private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
 
 @Composable
-fun RepoShelfApp() {
+fun RepoShelfApp(openTrackedRequest: Long? = null, onOpenHandled: () -> Unit = {}) {
     val navController = rememberNavController()
+    // Értesítésből: közvetlenül az érintett alkalmazás adatlapja (C. 13.).
+    LaunchedEffect(openTrackedRequest) {
+        val id = openTrackedRequest ?: return@LaunchedEffect
+        navController.navigate("$TRACKED_ROUTE/$id") { launchSingleTop = true }
+        onOpenHandled()
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
@@ -120,7 +127,7 @@ fun RepoShelfApp() {
                 SourcesScreen(onOpenTracked = { id -> navController.navigate("$TRACKED_ROUTE/$id") })
             }
             composable(TopLevelDestination.SETTINGS.route) {
-                PlaceholderScreen(R.string.nav_settings, R.string.placeholder_settings)
+                SettingsScreen()
             }
         }
     }

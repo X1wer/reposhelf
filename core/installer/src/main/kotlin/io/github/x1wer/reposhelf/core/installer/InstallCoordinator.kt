@@ -17,6 +17,8 @@ import io.github.x1wer.reposhelf.core.update.InstallInitiator
 import io.github.x1wer.reposhelf.core.update.InstallOutcome
 import io.github.x1wer.reposhelf.core.update.InstallResultVerifier
 import io.github.x1wer.reposhelf.core.update.StepResult
+import io.github.x1wer.reposhelf.core.update.UnattendedInstallPolicy
+import io.github.x1wer.reposhelf.core.update.UnattendedReason
 import io.github.x1wer.reposhelf.core.update.UpdateFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -92,8 +94,11 @@ class InstallCoordinator(
         return if (report.isInstallable) PreparedInstall.Ready(report, files, isUpdate) else PreparedInstall.Blocked(report, files)
     }
 
-    /** 7. lépés: a telepítés kezdeményezése, a telepítés PILLANATÁBAN érvényes állapottal újra összevetve. */
-    suspend fun install(prepared: PreparedInstall.Ready, target: InstallTarget): StepResult<Int> {
+    /**
+     * 7. lépés: a telepítés kezdeményezése, a telepítés PILLANATÁBAN érvényes állapottal újra összevetve.
+     * [unattended]: a hívó (háttérfeladat) az [UnattendedInstallPolicy] döntése alapján kéri a beavatkozás nélküli módot.
+     */
+    suspend fun install(prepared: PreparedInstall.Ready, target: InstallTarget, unattended: Boolean = false): StepResult<Int> {
         val packageName = prepared.report.facts?.packageName
         val installedNow = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } }
         return initiator.initiate(
@@ -102,7 +107,15 @@ class InstallCoordinator(
             expectation = InstallExpectation(target.expectedPackageName, target.fromCatalog),
             installedNow = installedNow,
             canRequestInstalls = installed.canRequestInstalls(),
+            unattended = unattended,
         )
+    }
+
+    /** A felhasználói beavatkozás nélküli telepítés döntése (ARCH 11.2.) a telepítés pillanatában érvényes állapottal. */
+    suspend fun unattendedVerdict(prepared: PreparedInstall.Ready, userEnabled: Boolean, ourPackage: String): UnattendedReason {
+        val packageName = prepared.report.facts?.packageName ?: return UnattendedReason.NOT_VERIFIED
+        val source = withContext(Dispatchers.IO) { if (installed.get(packageName) != null) installed.installSource(packageName) else null }
+        return UnattendedInstallPolicy.evaluate(userEnabled, android.os.Build.VERSION.SDK_INT, ourPackage, source, prepared.report)
     }
 
     /** 8. lépés: a rendszer eredményének ellenőrzése a ténylegesen telepített csomaggal. */

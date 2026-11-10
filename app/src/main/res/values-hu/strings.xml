@@ -57,6 +57,4 @@
     <string name="refresh_unchanged">A katalógus naprakész.</string>
     <string name="refresh_failed">A katalógus frissítése nem sikerült: %1$s</string>
 
-    <string name="placeholder_in_development">Ez a képernyő fejlesztés alatt áll.</string>
-    <string name="placeholder_settings">Itt lesznek majd a frissítési, értesítési, hálózati, megjelenítési és biztonsági beállítások.</string>
 </resources>

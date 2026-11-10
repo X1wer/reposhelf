@@ -20,6 +20,11 @@ data class InstallRequest(
     val packageName: String,
     val fromCatalog: Boolean,
     val isUpdate: Boolean,
+    /**
+     * Felhasználói beavatkozás nélküli telepítés kérése (`USER_ACTION_NOT_REQUIRED`). Csak akkor `true`, ha az
+     * [UnattendedInstallPolicy] minden feltételt igazolt; a rendszer ezután is kérhet jóváhagyást (C. 12.4.).
+     */
+    val unattended: Boolean = false,
 )
 
 sealed interface InstallStart {
@@ -53,6 +58,7 @@ class InstallInitiator(private val port: PackageInstallPort) {
         expectation: InstallExpectation,
         installedNow: InstalledAppInfo?,
         canRequestInstalls: Boolean,
+        unattended: Boolean = false,
     ): StepResult<Int> {
         if (!canRequestInstalls) return StepResult.Failed(UpdateFailure.NoInstallPermission)
         val critical = report.findings.filter { it.severity == Severity.CRITICAL }
@@ -77,7 +83,9 @@ class InstallInitiator(private val port: PackageInstallPort) {
         }
         val ordered = files.mapIndexed { i, file -> VerifiedFile(file.file, file.sha256, report.fileFacts[i].splitName) }
             .sortedBy { it.splitName != null }
-        return when (val start = port.install(InstallRequest(ordered, facts.packageName, expectation.fromCatalog, isUpdate = installed != null))) {
+        // Felhasználói beavatkozás nélkül csak frissítés mehet (az első telepítés mindig jóváhagyásos).
+        val request = InstallRequest(ordered, facts.packageName, expectation.fromCatalog, isUpdate = installed != null, unattended = unattended && installed != null)
+        return when (val start = port.install(request)) {
             is InstallStart.Committed -> StepResult.Ok(start.sessionId)
             is InstallStart.Failed -> StepResult.Failed(UpdateFailure.InstallStartFailed(start.reason))
         }

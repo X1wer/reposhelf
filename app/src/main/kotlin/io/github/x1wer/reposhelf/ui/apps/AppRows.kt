@@ -167,8 +167,16 @@ fun TrackedAppRow(
             }
             Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
+        // A ténylegesen érvényes szabály (globális beállítás + alkalmazásonkénti felülírás; C. 10., 12.6.).
         Text(
-            stringResource(if (app.checkEnabled) R.string.row_auto_update_off else R.string.row_monitoring_off),
+            stringResource(
+                when {
+                    !row.policy.checkEnabled -> R.string.row_monitoring_off
+                    row.policy.autoInstall -> R.string.row_auto_update_on
+                    row.policy.autoDownload -> R.string.row_auto_download_on
+                    else -> R.string.row_auto_update_off
+                },
+            ),
             style = MaterialTheme.typography.bodySmall,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {

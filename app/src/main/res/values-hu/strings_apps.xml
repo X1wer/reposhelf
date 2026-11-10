@@ -28,6 +28,8 @@
     <string name="row_last_error">Az utolsó ellenőrzés nem fejeződött be (%1$s)</string>
     <string name="row_last_error_rate">Az utolsó ellenőrzés elmaradt: GitHub API-korlát (%1$s)</string>
     <string name="row_auto_update_off">Automatikus frissítés: kikapcsolva</string>
+    <string name="row_auto_update_on">Automatikus frissítés: bekapcsolva</string>
+    <string name="row_auto_download_on">Automatikus letöltés: bekapcsolva</string>
     <string name="row_monitoring_off">Frissítésfigyelés: kikapcsolva</string>
     <string name="origin_catalog">Katalógus</string>
     <string name="origin_user">Saját forrás</string>

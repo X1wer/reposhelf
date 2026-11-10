@@ -67,7 +67,7 @@ data class TrackedAppEntity(
     val installedReleaseVersionCode: Long?,
 )
 
-/** Alkalmazásonkénti felülírások; `null` = a globális beállítás érvényes (C. 12.6.). Az 5. munkamenet bővíti. */
+/** Alkalmazásonkénti felülírások; `null` = a globális beállítás érvényes (C. 12.6.). v3: letöltés, telepítés, értesítés, késleltetés. */
 @Entity(
     tableName = "app_settings_override",
     foreignKeys = [ForeignKey(entity = TrackedAppEntity::class, parentColumns = ["id"], childColumns = ["trackedAppId"], onDelete = ForeignKey.CASCADE)],
@@ -76,6 +76,21 @@ data class AppSettingsOverrideEntity(
     @PrimaryKey val trackedAppId: Long,
     val checkEnabled: Boolean?,
     val includePrereleases: Boolean?,
+    val autoDownload: Boolean? = null,
+    val autoInstall: Boolean? = null,
+    val notify: Boolean? = null,
+    val releaseDelayDays: Int? = null,
+)
+
+/**
+ * Az elküldött értesítések naplója (docs/ARCHITECTURE.md 4. és 12. pont): ugyanarról a változatlan állapotról nincs
+ * ismételt értesítés (C. 13.). A [stateHash] az állapot rövid azonosítója (pl. a kiadás azonosítója).
+ */
+@Entity(tableName = "notification_log")
+data class NotificationLogEntity(
+    @PrimaryKey val dedupKey: String,
+    val stateHash: String,
+    val postedAtMillis: Long,
 )
 
 /**

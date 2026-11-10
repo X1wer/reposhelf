@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Háttérműködés, értesítések, beállítások (5. munkamenet). -->
+<resources>
+    <!-- Értesítési csatornák (C. 13.) -->
+    <string name="notif_group">RepoShelf</string>
+    <string name="notif_channel_updates">App updates available</string>
+    <string name="notif_channel_installed">Updates installed</string>
+    <string name="notif_channel_failures">Failed downloads or installs</string>
+    <string name="notif_channel_security">Security warnings</string>
+    <string name="notif_channel_catalog">Catalog updates</string>
+    <string name="notif_channel_self_update">RepoShelf updates</string>
+    <string name="notif_channel_progress">Download progress</string>
+
+    <!-- Értesítések -->
+    <string name="notif_update_title">Update available: %1$s</string>
+    <string name="notif_update_text">New version: %1$s. Tap to review and install.</string>
+    <string name="notif_ready_title">Ready to install: %1$s</string>
+    <string name="notif_ready_text">%1$s was downloaded and checked. Tap to install.</string>
+    <string name="notif_confirm_title">Confirm the update: %1$s</string>
+    <string name="notif_confirm_text">Android asks you to confirm this installation. Tap to continue.</string>
+    <string name="notif_installed_title">Updated: %1$s</string>
+    <string name="notif_installed_text">Version %1$s is installed and verified.</string>
+    <string name="notif_failed_title">Update failed: %1$s</string>
+    <string name="notif_failed_download">The download failed. It will be retried at the next check.</string>
+    <string name="notif_failed_install">Android did not install the update (status %1$d).</string>
+    <string name="notif_security_title">Security warning: %1$s</string>
+    <string name="notif_security_blocked">The downloaded update %1$s failed the security check and was not installed.</string>
+    <string name="notif_catalog_title">Catalog updated</string>
+    <plurals name="notif_catalog_text">
+        <item quantity="one">The app catalog now lists %1$d app.</item>
+        <item quantity="other">The app catalog now lists %1$d apps.</item>
+    </plurals>
+
+    <!-- Értesítési engedély -->
+    <string name="notif_permission_title">Allow notifications?</string>
+    <string name="notif_permission_text">RepoShelf can notify you when a followed app has an update, when an update was installed or failed, and about security warnings. You can turn each category off later.</string>
+    <string name="notif_permission_allow">Continue</string>
+    <string name="notif_permission_later">Not now</string>
+    <string name="notif_disabled_banner">Notifications are off. Updates and security warnings are still shown in the app.</string>
+    <string name="action_notification_settings">Notification settings</string>
+
+    <!-- Beállítások (C. 12.5–12.6.) -->
+    <string name="settings_section_checks">Update checks</string>
+    <string name="settings_frequency">Check automatically</string>
+    <string name="freq_6h">Every 6 hours</string>
+    <string name="freq_12h">Every 12 hours</string>
+    <string name="freq_daily">Daily</string>
+    <string name="freq_weekly">Weekly</string>
+    <string name="freq_manual">Only manually</string>
+    <string name="settings_check_unmetered">Check only on Wi-Fi (unmetered networks)</string>
+    <string name="settings_timing_note">Android decides the exact time of background checks (battery saving), so they may run later than set.</string>
+    <string name="settings_last_run">Last background check: %1$s (checked: %2$d, updates: %3$d)</string>
+    <string name="settings_last_run_never">No background check has run yet.</string>
+    <plurals name="settings_last_run_limited">
+        <item quantity="one">%1$d app was skipped because of the API limit.</item>
+        <item quantity="other">%1$d apps were skipped because of the API limit.</item>
+    </plurals>
+    <string name="settings_battery">Battery optimization settings</string>
+    <string name="settings_section_install">Download and install</string>
+    <string name="settings_auto_download">Download updates automatically</string>
+    <string name="settings_auto_download_metered">Also on mobile data</string>
+    <string name="settings_auto_install">Install updates automatically where Android allows</string>
+    <string name="settings_auto_install_note">Android installs without asking only for updates of apps that RepoShelf installed or owns, on Android 12 or newer, when the app targets a recent Android version. Otherwise Android asks you to confirm – this is normal. Updates with a security problem are never installed automatically.</string>
+    <string name="settings_update_ownership">Ask other installers to get my confirmation (update ownership, Android 14+)</string>
+    <string name="settings_section_releases">Releases</string>
+    <string name="settings_prereleases">Include pre-releases (beta versions)</string>
+    <string name="settings_delay">Delay new releases</string>
+    <string name="delay_none">No delay</string>
+    <plurals name="delay_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_notify_updates">Notify about available updates</string>
+    <string name="settings_defaults_note">Safe defaults: automatic checks are on; automatic download and automatic install are off.</string>
+
+    <!-- Alkalmazásonkénti szabályok (C. 12.6.) -->
+    <string name="rules_title">Update rules for this app</string>
+    <string name="rules_note">“Default” follows the global setting shown in brackets.</string>
+    <string name="rule_default">Default (%1$s)</string>
+    <string name="rule_on">On</string>
+    <string name="rule_off">Off</string>
+    <string name="rule_monitoring">Update monitoring</string>
+    <string name="rule_auto_download">Automatic download</string>
+    <string name="rule_auto_install">Automatic install</string>
+    <string name="rule_prereleases">Pre-releases</string>
+    <string name="rule_notify">Update notifications</string>
+    <string name="rule_delay">Release delay</string>
+    <string name="details_ready_from_background">This update was downloaded and checked in the background.</string>
+</resources>

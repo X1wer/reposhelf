@@ -19,6 +19,7 @@ import io.github.x1wer.reposhelf.core.apk.ApkInspector
 import io.github.x1wer.reposhelf.core.apk.DeviceProfile
 import io.github.x1wer.reposhelf.core.apk.InstalledAppInfo
 import io.github.x1wer.reposhelf.core.apk.SignerInfo
+import io.github.x1wer.reposhelf.core.update.InstallSource
 import io.github.x1wer.reposhelf.core.update.InstalledAppLookup
 import java.io.File
 import java.security.MessageDigest
@@ -102,6 +103,26 @@ class InstalledPackages(private val context: Context) : InstalledAppLookup {
     }
 
     fun launchIntent(packageName: String): Intent? = context.packageManager.getLaunchIntentForPackage(packageName)
+
+    /**
+     * A telepített csomag telepítési forrása: az installer of record és (Android 14+) az update owner. A felhasználói
+     * beavatkozás nélküli frissítés feltétele (ARCH 11.2.). Nem látható csomagnál `null`.
+     */
+    fun installSource(packageName: String): InstallSource? = try {
+        val pm = context.packageManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val info = pm.getInstallSourceInfo(packageName)
+            val owner = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) info.updateOwnerPackageName else null
+            InstallSource(info.installingPackageName, owner)
+        } else {
+            @Suppress("DEPRECATION")
+            InstallSource(pm.getInstallerPackageName(packageName), null)
+        }
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 
     /** A telepített alkalmazás ikonja (csak látható csomagnál; ARCH 13.). */
     fun icon(packageName: String): Drawable? = try {

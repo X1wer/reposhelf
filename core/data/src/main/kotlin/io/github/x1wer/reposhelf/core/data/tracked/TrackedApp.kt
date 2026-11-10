@@ -10,6 +10,7 @@ import io.github.x1wer.reposhelf.core.model.Release
 import io.github.x1wer.reposhelf.core.model.RepoMetadata
 import io.github.x1wer.reposhelf.core.model.RepoRef
 import io.github.x1wer.reposhelf.core.source.UnavailableReason
+import io.github.x1wer.reposhelf.core.update.AppOverrides
 import io.github.x1wer.reposhelf.core.update.InstalledRelease
 import io.github.x1wer.reposhelf.core.update.UpdateCheck
 import io.github.x1wer.reposhelf.core.update.UpdateStatus
@@ -59,8 +60,10 @@ data class TrackedApp(
     val installedRelease: InstalledRelease?,
     /** Frissítésfigyelés (alkalmazásonkénti felülírás vagy a globális alapérték: be). */
     val checkEnabled: Boolean,
-    /** Előzetes kiadások követése (felülírás vagy a globális alapérték: ki). */
+    /** Előzetes kiadások követése: az alkalmazásonkénti felülírás (ha nincs, `false`; a tényleges érték: [overrides] + globális). */
     val includePrereleases: Boolean,
+    /** Alkalmazásonkénti felülírások (C. 12.6.); a tényleges szabály: `TrackedAppsRepository.policyFor`. */
+    val overrides: AppOverrides = AppOverrides(),
 )
 
 /** Egy URL-ből hozzáadandó repó előnézete (C. 9.: 1–5. lépés). Még semmi nem kerül az adatbázisba. */

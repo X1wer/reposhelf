@@ -18,15 +18,18 @@ import androidx.room.RoomDatabase
  * - 1: katalógus és keresés (2. munkamenet);
  * - 2: követett alkalmazások, alkalmazásonkénti felülírások, rögzített aláírók, APK-elemzések (4. munkamenet).
  *   Csak új táblák, ezért automatikus migráció.
+ * - 3: alkalmazásonkénti felülírások bővítése (letöltés, telepítés, értesítés, késleltetés) és értesítési napló
+ *   (5. munkamenet). Új, nullázható oszlopok és új tábla: automatikus migráció.
  */
 @Database(
     entities = [
         CatalogStateEntity::class, CatalogAppEntity::class, CatalogAppFts::class,
         TrackedAppEntity::class, AppSettingsOverrideEntity::class, SignerPinEntity::class, ApkAnalysisEntity::class,
+        NotificationLogEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao

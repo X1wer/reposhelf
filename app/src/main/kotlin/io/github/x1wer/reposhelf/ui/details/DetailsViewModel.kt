@@ -34,6 +34,8 @@ import io.github.x1wer.reposhelf.core.network.DownloadFailure
 import io.github.x1wer.reposhelf.core.source.readme.LinkContext
 import io.github.x1wer.reposhelf.core.source.readme.MarkdownDocument
 import io.github.x1wer.reposhelf.core.source.readme.ReadmeParser
+import io.github.x1wer.reposhelf.core.update.AppOverrides
+import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import io.github.x1wer.reposhelf.core.update.InstallOutcome
 import io.github.x1wer.reposhelf.core.update.StepResult
 import io.github.x1wer.reposhelf.core.update.UpdateFailure
@@ -92,6 +94,8 @@ data class DetailsUiState(
     val installed: InstalledAppInfo? = null,
     val install: InstallUiState = InstallUiState.Idle,
     val showExternalImages: Boolean = false,
+    /** Az ellenőrzött frissítést a háttérfeladat készítette elő. */
+    val readyFromBackground: Boolean = false,
 ) {
     /** Azonos néven más repó: a telepítés tiltva, amíg a felhasználó nem dönt (C. 19.). */
     val installBlockedByRepo: Boolean get() = tracked?.repoState == RepoState.ID_CHANGED
@@ -105,6 +109,12 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
     private var sessionId: Int? = null
     private var committedFiles: List<DownloadedApk>? = null
     private var trackedJob: Job? = null
+
+    /** A megjelenített ellenőrzött frissítés a háttérben készült (fájljai a háttérfeladathoz tartoznak, nem töröljük). */
+    private var verifiedFromBackground = false
+
+    /** A globális beállítások (az alkalmazásonkénti szabályok „alapértelmezett” értékéhez). */
+    val globalSettings: StateFlow<GlobalSettings> = container.settingsState
 
     init {
         load(force = false)
@@ -191,6 +201,27 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
                 preliminary = preliminary,
             )
         }
+        offerBackgroundReady()
+    }
+
+    /** Ha a háttérfeladat már letöltötte és ellenőrizte ezt a kiadást, nem kell újra letölteni (C. 12.3.). */
+    private fun offerBackgroundReady() {
+        val current = _state.value
+        val trackedId = current.tracked?.id ?: return
+        val ready = container.backgroundUpdates.readyUpdates[trackedId] ?: return
+        if (ready.releaseId != current.release?.id || current.install != InstallUiState.Idle) return
+        if (ready.prepared.files.any { !it.file.exists() }) {
+            container.backgroundUpdates.readyUpdates.remove(trackedId)
+            return
+        }
+        verifiedFromBackground = true
+        _state.update { it.copy(install = InstallUiState.Verified(ready.prepared), readyFromBackground = true) }
+    }
+
+    /** Alkalmazásonkénti szabályok (C. 12.6.); `null` mező = a globális beállítás érvényes. */
+    fun setOverrides(overrides: AppOverrides) {
+        val tracked = _state.value.tracked ?: return
+        viewModelScope.launch { container.trackedApps.setOverrides(tracked.id, overrides) }
     }
 
     fun showExternalImages() = _state.update { it.copy(showExternalImages = true) }
@@ -337,6 +368,8 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         viewModelScope.launch {
             _state.update { it.copy(install = InstallUiState.Installing(verified.prepared.report, waitingForUser = false)) }
             committedFiles = verified.prepared.files
+            _state.value.tracked?.id?.let { container.backgroundUpdates.readyUpdates.remove(it) }
+            verifiedFromBackground = false
             when (val start = container.installCoordinator.install(verified.prepared, target)) {
                 is StepResult.Ok -> sessionId = start.value
                 is StepResult.Blocked -> {
@@ -402,7 +435,7 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
 
     override fun onCleared() {
         // Ha a felhasználó a telepítés jóváhagyása előtt elhagyja az adatlapot, az ellenőrzött fájlok is törlődnek.
-        (_state.value.install as? InstallUiState.Verified)?.let { container.installCoordinator.cleanup(it.prepared.files) }
+        if (!verifiedFromBackground) (_state.value.install as? InstallUiState.Verified)?.let { container.installCoordinator.cleanup(it.prepared.files) }
     }
 
     companion object {

@@ -38,6 +38,8 @@ dependencies {
     api(project(":core:update"))
     // Az AppDatabase (RoomDatabase leszármazott) a modul publikus API-jának része, ezért `api`.
     api(libs.androidx.room.runtime)
+    // Globális beállítások (C. 12.5–12.6.).
+    api(libs.androidx.datastore.preferences)
     ksp(libs.androidx.room.compiler)
     implementation(libs.kotlinx.coroutines.android)
 

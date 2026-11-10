@@ -10,6 +10,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Értesítések (Android 13+ futásidejű engedély): nem első indításkor kérjük, hanem az első követéskor vagy az
+         értesítések bekapcsolásakor, magyarázattal (ARCH 12., D-063). A WorkManager a hálózat- és az újraindítás-
+         figyeléshez saját engedélyeket hoz (ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED, WAKE_LOCK). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".RepoShelfApplication"

@@ -19,6 +19,9 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ENFORCE_UPDATE_OWNERSHIP" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Normál engedély (Android 12+): a felhasználói beavatkozás nélküli FRISSÍTÉS feltétele (ARCH 11.2.). Csak akkor
+         használjuk, ha a felhasználó bekapcsolta az automatikus telepítést, és minden feltétel teljesül. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <queries>
         <intent>

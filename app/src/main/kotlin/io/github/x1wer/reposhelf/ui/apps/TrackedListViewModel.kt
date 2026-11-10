@@ -19,6 +19,9 @@ import io.github.x1wer.reposhelf.core.data.tracked.CheckProgress
 import io.github.x1wer.reposhelf.core.data.tracked.CheckSummary
 import io.github.x1wer.reposhelf.core.data.tracked.RepoState
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedApp
+import io.github.x1wer.reposhelf.background.Notifier
+import io.github.x1wer.reposhelf.core.update.AppPolicy
+import io.github.x1wer.reposhelf.core.update.PolicyResolver
 import io.github.x1wer.reposhelf.core.update.UpdateStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -39,7 +42,7 @@ enum class InstallState { INSTALLED, NOT_INSTALLED, NO_LONGER_INSTALLED }
 
 enum class AppFilter { ALL, INSTALLED, FOLLOWED_ONLY, FAVORITES, OWN, NO_LONGER_INSTALLED }
 
-data class TrackedRow(val app: TrackedApp, val installed: InstalledAppInfo?, val installState: InstallState) {
+data class TrackedRow(val app: TrackedApp, val installed: InstalledAppInfo?, val installState: InstallState, val policy: AppPolicy) {
     /** Figyelmet igényel-e (Frissítések képernyő): frissítés vagy a repóval kapcsolatos probléma. */
     val needsAttention: Boolean
         get() = app.isFollowed && (
@@ -82,13 +85,18 @@ class TrackedListViewModel(private val container: AppContainer) : ViewModel() {
     val icons: StateFlow<Map<String, ImageBitmap>> = _icons
     val events: Flow<ListEvent> = eventChannel.receiveAsFlow()
 
+    private val _notificationsAllowed = MutableStateFlow(true)
+
+    /** Küldhetők-e frissítési értesítések; ha nem, a képernyő sávban jelzi (C. 13.). */
+    val notificationsAllowed: StateFlow<Boolean> = _notificationsAllowed
+
     val state: StateFlow<TrackedListUiState> = combine(
-        repository.observeAll(),
+        combine(repository.observeAll(), container.settingsState) { apps, global -> apps to global },
         installedInfo,
         filter,
         repository.progress,
         summary,
-    ) { apps, installed, currentFilter, progress, lastSummary ->
+    ) { (apps, global), installed, currentFilter, progress, lastSummary ->
         val rows = apps.filter { it.isFollowed || it.isFavorite }.map { app ->
             val info = app.packageName?.let { installed[it] }
             val state = when {
@@ -96,7 +104,7 @@ class TrackedListViewModel(private val container: AppContainer) : ViewModel() {
                 app.everInstalled -> InstallState.NO_LONGER_INSTALLED
                 else -> InstallState.NOT_INSTALLED
             }
-            TrackedRow(app, info, state)
+            TrackedRow(app, info, state, PolicyResolver.resolve(global, app.overrides))
         }
         TrackedListUiState(rows.filter { it.matches(currentFilter) }, rows.size, currentFilter, loaded = true, progress, lastSummary)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TrackedListUiState())
@@ -119,6 +127,7 @@ class TrackedListViewModel(private val container: AppContainer) : ViewModel() {
 
     /** A képernyő megjelenésekor (pl. eltávolítás vagy máshonnan telepítés után) a PackageManager újraolvasása. */
     fun onResume() {
+        _notificationsAllowed.value = container.notifier.canPost(Notifier.CH_UPDATES)
         viewModelScope.launch {
             repository.refreshInstalledStates()
             refreshInstalled(state.value.rows.mapNotNull { it.app.packageName }.toSet() + installedInfo.value.keys)

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <!-- Értesítési csatornák (C. 13.) -->
+    <string name="notif_group">RepoShelf</string>
+    <string name="notif_channel_updates">Elérhető alkalmazásfrissítések</string>
+    <string name="notif_channel_installed">Telepített frissítések</string>
+    <string name="notif_channel_failures">Sikertelen letöltés vagy telepítés</string>
+    <string name="notif_channel_security">Biztonsági figyelmeztetések</string>
+    <string name="notif_channel_catalog">Katalógusfrissítés</string>
+    <string name="notif_channel_self_update">A RepoShelf frissítése</string>
+    <string name="notif_channel_progress">Letöltés folyamata</string>
+
+    <!-- Értesítések -->
+    <string name="notif_update_title">Frissítés érhető el: %1$s</string>
+    <string name="notif_update_text">Új verzió: %1$s. Koppints az ellenőrzéshez és a telepítéshez.</string>
+    <string name="notif_ready_title">Telepítésre kész: %1$s</string>
+    <string name="notif_ready_text">A(z) %1$s letöltve és ellenőrizve. Koppints a telepítéshez.</string>
+    <string name="notif_confirm_title">Hagyd jóvá a frissítést: %1$s</string>
+    <string name="notif_confirm_text">Az Android jóváhagyást kér ehhez a telepítéshez. Koppints a folytatáshoz.</string>
+    <string name="notif_installed_title">Frissítve: %1$s</string>
+    <string name="notif_installed_text">A(z) %1$s verzió telepítve és ellenőrizve.</string>
+    <string name="notif_failed_title">A frissítés nem sikerült: %1$s</string>
+    <string name="notif_failed_download">A letöltés nem sikerült. A következő ellenőrzéskor újra próbálkozunk.</string>
+    <string name="notif_failed_install">Az Android nem telepítette a frissítést (állapotkód: %1$d).</string>
+    <string name="notif_security_title">Biztonsági figyelmeztetés: %1$s</string>
+    <string name="notif_security_blocked">A letöltött %1$s frissítés nem ment át a biztonsági ellenőrzésen, ezért nem települt.</string>
+    <string name="notif_catalog_title">A katalógus frissült</string>
+    <plurals name="notif_catalog_text">
+        <item quantity="one">Az alkalmazáskatalógusban most %1$d alkalmazás szerepel.</item>
+        <item quantity="other">Az alkalmazáskatalógusban most %1$d alkalmazás szerepel.</item>
+    </plurals>
+
+    <!-- Értesítési engedély -->
+    <string name="notif_permission_title">Engedélyezed az értesítéseket?</string>
+    <string name="notif_permission_text">A RepoShelf értesíthet, ha egy követett alkalmazáshoz frissítés érhető el, ha egy frissítés települt vagy nem sikerült, valamint biztonsági figyelmeztetésekről. Az egyes kategóriákat később kikapcsolhatod.</string>
+    <string name="notif_permission_allow">Tovább</string>
+    <string name="notif_permission_later">Most nem</string>
+    <string name="notif_disabled_banner">Az értesítések ki vannak kapcsolva. A frissítések és a biztonsági figyelmeztetések az alkalmazásban továbbra is látszanak.</string>
+    <string name="action_notification_settings">Értesítési beállítások</string>
+
+    <!-- Beállítások (C. 12.5–12.6.) -->
+    <string name="settings_section_checks">Frissítésellenőrzés</string>
+    <string name="settings_frequency">Automatikus ellenőrzés</string>
+    <string name="freq_6h">6 óránként</string>
+    <string name="freq_12h">12 óránként</string>
+    <string name="freq_daily">Naponta</string>
+    <string name="freq_weekly">Hetente</string>
+    <string name="freq_manual">Csak kézzel</string>
+    <string name="settings_check_unmetered">Ellenőrzés csak Wi-Fi-n (forgalomkorlát nélküli hálózaton)</string>
+    <string name="settings_timing_note">A háttérellenőrzés pontos idejét az Android határozza meg (energiatakarékosság), ezért a beállítottnál később is futhat.</string>
+    <string name="settings_last_run">Utolsó háttérellenőrzés: %1$s (ellenőrizve: %2$d, frissítés: %3$d)</string>
+    <string name="settings_last_run_never">Még nem futott háttérellenőrzés.</string>
+    <plurals name="settings_last_run_limited">
+        <item quantity="one">%1$d alkalmazás az API-korlát miatt kimaradt.</item>
+        <item quantity="other">%1$d alkalmazás az API-korlát miatt kimaradt.</item>
+    </plurals>
+    <string name="settings_battery">Akkumulátor-optimalizálás beállításai</string>
+    <string name="settings_section_install">Letöltés és telepítés</string>
+    <string name="settings_auto_download">Frissítések automatikus letöltése</string>
+    <string name="settings_auto_download_metered">Mobiladaton is</string>
+    <string name="settings_auto_install">Frissítések automatikus telepítése, ahol az Android engedi</string>
+    <string name="settings_auto_install_note">Az Android csak azoknak az alkalmazásoknak a frissítését telepíti jóváhagyás nélkül, amelyeket a RepoShelf telepített (vagy birtokol), Android 12-től, és ha az alkalmazás egy friss Android-verziót céloz. Egyébként az Android jóváhagyást kér – ez normális. Biztonsági problémát mutató frissítés soha nem települ automatikusan.</string>
+    <string name="settings_update_ownership">Más telepítők csak a jóváhagyásommal frissíthessenek (update ownership, Android 14+)</string>
+    <string name="settings_section_releases">Kiadások</string>
+    <string name="settings_prereleases">Előzetes (béta) kiadások követése</string>
+    <string name="settings_delay">Új kiadások késleltetése</string>
+    <string name="delay_none">Nincs késleltetés</string>
+    <plurals name="delay_days">
+        <item quantity="one">%1$d nap</item>
+        <item quantity="other">%1$d nap</item>
+    </plurals>
+    <string name="settings_section_notifications">Értesítések</string>
+    <string name="settings_notify_updates">Értesítés az elérhető frissítésekről</string>
+    <string name="settings_defaults_note">Biztonságos alapbeállítás: az automatikus ellenőrzés be van kapcsolva, az automatikus letöltés és telepítés ki.</string>
+
+    <!-- Alkalmazásonkénti szabályok (C. 12.6.) -->
+    <string name="rules_title">Frissítési szabályok ehhez az alkalmazáshoz</string>
+    <string name="rules_note">Az „Alapértelmezett” a zárójelben látható globális beállítást követi.</string>
+    <string name="rule_default">Alapértelmezett (%1$s)</string>
+    <string name="rule_on">Be</string>
+    <string name="rule_off">Ki</string>
+    <string name="rule_monitoring">Frissítésfigyelés</string>
+    <string name="rule_auto_download">Automatikus letöltés</string>
+    <string name="rule_auto_install">Automatikus telepítés</string>
+    <string name="rule_prereleases">Előzetes kiadások</string>
+    <string name="rule_notify">Frissítési értesítések</string>
+    <string name="rule_delay">Kiadás-késleltetés</string>
+    <string name="details_ready_from_background">Ezt a frissítést a háttérben letöltöttük és ellenőriztük.</string>
+</resources>

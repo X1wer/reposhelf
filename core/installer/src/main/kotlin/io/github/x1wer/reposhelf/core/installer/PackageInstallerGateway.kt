@@ -114,8 +114,12 @@ class PackageInstallerGateway(
             setInstallReason(PackageManager.INSTALL_REASON_USER)
             setSize(files.sumOf { it.file.length() })
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // A kézi telepítés mindig felhasználói jóváhagyással megy (C. 12.5.); az automatikus mód az 5. munkamenetben jön.
-                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+                // Alapból mindig felhasználói jóváhagyással (C. 12.5.). Beavatkozás nélkül csak akkor, ha az
+                // UnattendedInstallPolicy minden feltételt igazolt (ARCH 11.2.); a rendszer ekkor is kérhet jóváhagyást.
+                setRequireUserAction(
+                    if (request.unattended && isUpdate) PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED
+                    else PackageInstaller.SessionParams.USER_ACTION_REQUIRED,
+                )
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 setPackageSource(if (fromCatalog) PackageInstaller.PACKAGE_SOURCE_STORE else PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE)

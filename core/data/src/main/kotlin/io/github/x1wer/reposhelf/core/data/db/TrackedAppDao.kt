@@ -72,6 +72,15 @@ abstract class TrackedAppDao {
     @Upsert
     abstract suspend fun upsertAnalysis(analysis: ApkAnalysisEntity)
 
+    @Query("SELECT * FROM notification_log WHERE dedupKey = :key")
+    abstract suspend fun notification(key: String): NotificationLogEntity?
+
+    @Upsert
+    abstract suspend fun upsertNotification(entry: NotificationLogEntity)
+
+    @Query("DELETE FROM notification_log WHERE dedupKey = :key")
+    abstract suspend fun deleteNotification(key: String)
+
     /** A repó legutóbbi ELFOGADOTT elemzésének csomagneve (elutasítottból nem tanulunk). */
     @Query("SELECT packageName FROM apk_analysis WHERE repoKey = :repoKey AND verdict = 'OK' AND packageName IS NOT NULL ORDER BY analyzedAtMillis DESC LIMIT 1")
     abstract suspend fun lastAcceptedPackage(repoKey: String): String?

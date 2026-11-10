@@ -22,29 +22,6 @@ import io.github.x1wer.reposhelf.R
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogErrorKind
 import io.github.x1wer.reposhelf.core.model.CatalogCategory
 
-/** Helykitöltő képernyő a még el nem készült főmenüpontokhoz (B. rész 2.1.). */
-@Composable
-fun PlaceholderScreen(@StringRes titleRes: Int, @StringRes messageRes: Int) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = stringResource(titleRes),
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.semantics { heading() },
-        )
-        Text(stringResource(messageRes), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-        Text(
-            stringResource(R.string.placeholder_in_development),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
 @StringRes
 fun CatalogCategory.labelRes(): Int = when (this) {
     CatalogCategory.COMMUNICATION -> R.string.category_communication

@@ -25,7 +25,11 @@ import io.github.x1wer.reposhelf.core.model.RepoRef
 import io.github.x1wer.reposhelf.core.model.Severity
 import io.github.x1wer.reposhelf.core.source.Fetch
 import io.github.x1wer.reposhelf.core.source.ProviderRegistry
+import io.github.x1wer.reposhelf.core.update.AppOverrides
+import io.github.x1wer.reposhelf.core.update.AppPolicy
+import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import io.github.x1wer.reposhelf.core.update.InstallOutcome
+import io.github.x1wer.reposhelf.core.update.PolicyResolver
 import io.github.x1wer.reposhelf.core.update.InstalledAppLookup
 import io.github.x1wer.reposhelf.core.update.InstalledRelease
 import io.github.x1wer.reposhelf.core.update.InstalledVersion
@@ -81,6 +85,8 @@ class TrackedAppsRepository(
     private val device: () -> DeviceProfile,
     private val budget: RequestBudget,
     private val clock: Clock = Clock.systemUTC(),
+    /** A globális beállítások (C. 12.5–12.6.): az alkalmazásonkénti felülírások ezekhez képest érvényesek. */
+    private val globalSettings: suspend () -> GlobalSettings = { GlobalSettings() },
 ) {
     private val dao = db.trackedAppDao()
     private val catalogDao = db.catalogDao()
@@ -180,15 +186,23 @@ class TrackedAppsRepository(
 
     suspend fun setFavorite(id: Long, favorite: Boolean) = modify(id) { it.copy(isFavorite = favorite) }
 
-    suspend fun setCheckEnabled(id: Long, enabled: Boolean) {
-        val current = dao.override(id)
-        dao.upsertOverride(AppSettingsOverrideEntity(id, enabled, current?.includePrereleases))
+    suspend fun setCheckEnabled(id: Long, enabled: Boolean) = updateOverrides(id) { it.copy(checkEnabled = enabled) }
+
+    suspend fun setIncludePrereleases(id: Long, include: Boolean) = updateOverrides(id) { it.copy(includePrereleases = include) }
+
+    /** Alkalmazásonkénti felülírások (C. 12.6.); `null` mező = a globális beállítás érvényes. */
+    suspend fun setOverrides(id: Long, overrides: AppOverrides) = updateOverrides(id) { overrides }
+
+    private suspend fun updateOverrides(id: Long, change: (AppOverrides) -> AppOverrides) {
+        if (dao.byId(id) == null) return
+        val next = change(dao.override(id).toOverrides())
+        dao.upsertOverride(
+            AppSettingsOverrideEntity(id, next.checkEnabled, next.includePrereleases, next.autoDownload, next.autoInstall, next.notify, next.releaseDelayDays),
+        )
     }
 
-    suspend fun setIncludePrereleases(id: Long, include: Boolean) {
-        val current = dao.override(id)
-        dao.upsertOverride(AppSettingsOverrideEntity(id, current?.checkEnabled, include))
-    }
+    /** Egy alkalmazásra ténylegesen érvényes szabályok (globális beállítás + felülírás). */
+    suspend fun policyFor(app: TrackedApp): AppPolicy = PolicyResolver.resolve(globalSettings(), app.overrides)
 
     /**
      * Eltávolítás a követett alkalmazások listájából. Az Android-alkalmazást NEM távolítja el (C. 10.), és a rögzített
@@ -339,8 +353,9 @@ class TrackedAppsRepository(
      * Az összes követett (és figyelt) alkalmazás ellenőrzése egymás után. Ha az API-keret elfogyna, megáll: a többi
      * alkalmazás állapota változatlan marad, és az összegzés jelzi, hány maradt ki és mikor folytatható.
      */
-    suspend fun checkAll(): CheckSummary = checkMutex.withLock {
-        val rows = dao.followedOldestCheckFirst().filter { it.override?.checkEnabled != false }
+    suspend fun checkAll(onChecked: suspend (TrackedApp, UpdateCheck) -> Unit = { _, _ -> }): CheckSummary = checkMutex.withLock {
+        val global = globalSettings()
+        val rows = dao.followedOldestCheckFirst().filter { PolicyResolver.resolve(global, it.override.toOverrides()).checkEnabled }
         var checked = 0
         var updates = 0
         var failed = 0
@@ -355,7 +370,8 @@ class TrackedAppsRepository(
                 if (!budget.canSpend(provider, REQUESTS_PER_CHECK)) {
                     return CheckSummary(checked, updates, failed, rows.size - index, budget.resumesAt(provider))
                 }
-                val check = runCheck(row)
+                val check = runCheck(row, global)
+                dao.byId(row.app.id)?.toModel()?.let { onChecked(it, check) }
                 when (check.status) {
                     UpdateStatus.RATE_LIMITED -> return CheckSummary(checked, updates, failed, rows.size - index, budget.resumesAt(provider))
                     UpdateStatus.ERROR -> failed++
@@ -373,11 +389,12 @@ class TrackedAppsRepository(
         }
     }
 
-    private suspend fun runCheck(row: TrackedAppWithSettings): UpdateCheck {
+    private suspend fun runCheck(row: TrackedAppWithSettings, global: GlobalSettings? = null): UpdateCheck {
+        val policy = PolicyResolver.resolve(global ?: globalSettings(), row.override.toOverrides())
         val app = row.app
         val ref = app.toRef() ?: return UpdateCheck(UpdateStatus.ERROR, null, null, null, emptyList(), UpdateFailure.Other("ref"))
         val catalog = app.catalogId?.let { catalogDao.byId(it) }?.toModelOrNull()
-        val source = TrackedSource(ref, app.repoId?.let(::ProviderRepoId), app.repoOwnerId, row.override?.includePrereleases ?: false)
+        val source = TrackedSource(ref, app.repoId?.let(::ProviderRepoId), app.repoOwnerId, policy.includePrereleases, policy.releaseDelay)
         val installedNow = app.packageName?.let { installedVersion(it, app) }
         val check = checker.check(UpdateCheckInput(source, installedNow, catalog?.assetFilter, device()))
         val now = clock.millis()
@@ -484,6 +501,9 @@ class TrackedAppsRepository(
         )
     }
 
+    private fun AppSettingsOverrideEntity?.toOverrides(): AppOverrides =
+        if (this == null) AppOverrides() else AppOverrides(checkEnabled, includePrereleases, autoDownload, autoInstall, notify, releaseDelayDays)
+
     private fun TrackedAppEntity.toRef(): RepoRef? = ProviderId.fromId(provider)?.let { RepoRef.parsePath(it, "$repoOwner/$repoName") }
 
     private fun TrackedAppWithSettings.toModel(): TrackedApp? {
@@ -517,6 +537,7 @@ class TrackedAppsRepository(
             },
             checkEnabled = override?.checkEnabled ?: true,
             includePrereleases = override?.includePrereleases ?: false,
+            overrides = override.toOverrides(),
         )
     }
 
