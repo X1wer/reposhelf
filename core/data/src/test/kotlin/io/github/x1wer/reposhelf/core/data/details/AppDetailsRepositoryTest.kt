@@ -16,6 +16,8 @@ import io.github.x1wer.reposhelf.core.source.Fetch
 import io.github.x1wer.reposhelf.core.source.ProviderRegistry
 import io.github.x1wer.reposhelf.core.source.SourceProvider
 import kotlinx.coroutines.runBlocking
+import io.github.x1wer.reposhelf.core.model.ReleaseAsset
+import io.github.x1wer.reposhelf.core.source.SourceError
 import org.junit.Test
 import java.time.Duration
 import java.time.Instant
@@ -76,6 +78,56 @@ class AppDetailsRepositoryTest {
         val loaded = repo.load(ref, force = true)
         assertEquals("desc", loaded.repo.value?.description)
         assertEquals(DetailsError.RateLimited(until), loaded.repo.error)
+    }
+
+    private class MemoryStore : DetailsStore {
+        val rows = mutableMapOf<String, StoredDetails>()
+        override suspend fun read(key: String) = rows[key]
+        override suspend fun write(key: String, details: StoredDetails) { rows[key] = details }
+    }
+
+    /** C. 24.: a korábban megnyitott adatlap egy új indítás után, hálózat nélkül is megjelenik, a hiba jelzésével. */
+    @Test
+    fun storedDetails_areShownOffline_afterARestart_withTheNetworkError(): Unit = runBlocking {
+        val store = MemoryStore()
+        val online = FakeProvider().apply { repoResult = Fetch.Fresh(meta, Validators("\"e1\"", null)) }
+        AppDetailsRepository(ProviderRegistry(listOf(online)), clock, store = store).load(ref)
+        assertEquals(3, store.rows.size)
+
+        clock.advance(Duration.ofHours(2))
+        val offline = object : SourceProvider by online {
+            override suspend fun repository(ref: RepoRef, validators: Validators?) = Fetch.Failed(SourceError.Network("offline"))
+            override suspend fun readme(ref: RepoRef, validators: Validators?) = Fetch.Failed(SourceError.Network("offline"))
+            override suspend fun releases(ref: RepoRef, validators: Validators?, limit: Int) = Fetch.Failed(SourceError.Network("offline"))
+        }
+        val restarted = AppDetailsRepository(ProviderRegistry(listOf(offline)), clock, store = store).load(ref)
+        assertEquals(meta, restarted.repo.value, "a tárolt repó-adat visszaolvasva")
+        assertEquals("# x", restarted.readme.value?.markdown)
+        assertEquals(emptyList(), restarted.releases.value)
+        assertEquals(DetailsError.Network, restarted.repo.error)
+        assertEquals(Instant.parse("2026-11-10T10:00:00Z"), restarted.repo.fetchedAt, "a mentés ideje látszik")
+    }
+
+    @Test
+    fun withinTtl_aRestartedAppUsesTheStoredDetails_withoutRequests(): Unit = runBlocking {
+        val store = MemoryStore()
+        val provider = FakeProvider().apply { repoResult = Fetch.Fresh(meta, Validators("\"e1\"", null)) }
+        AppDetailsRepository(ProviderRegistry(listOf(provider)), clock, store = store).load(ref)
+        clock.advance(Duration.ofMinutes(5))
+        AppDetailsRepository(ProviderRegistry(listOf(provider)), clock, store = store).load(ref)
+        assertEquals(3, provider.calls, "a tartós gyorsítótár kíméli az API-keretet")
+    }
+
+    @Test
+    fun codecs_roundTripReleasesWithAssets_andRejectCorruptData() {
+        val release = Release(
+            7, "v1.0", "One", true, false, Instant.parse("2026-01-01T00:00:00Z"), null, "notes", "https://github.com/o/a/releases/tag/v1.0", true,
+            listOf(ReleaseAsset(9, "app.apk", "lbl", "application/vnd.android.package-archive", 1234, "https://github.com/o/a/releases/download/v1.0/app.apk", "ab".repeat(32), "uploaded")),
+        )
+        assertEquals(listOf(release), DetailsCodecs.releases.decode(DetailsCodecs.releases.encode(listOf(release))))
+        assertEquals(meta, DetailsCodecs.repo.decode(DetailsCodecs.repo.encode(meta)))
+        assertNull(DetailsCodecs.repo.decode("{nem json"))
+        assertNull(DetailsCodecs.repo.decode(DetailsCodecs.repo.encode(meta).replace("\"owner\":\"owner\"", "\"owner\":\"bad owner\"")), "érvénytelen tárolt érték: kimarad")
     }
 
     @Test

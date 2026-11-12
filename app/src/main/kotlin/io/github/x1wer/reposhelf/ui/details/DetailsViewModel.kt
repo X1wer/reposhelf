@@ -113,6 +113,8 @@ data class DetailsUiState(
     val showExternalImages: Boolean = false,
     /** Az ellenőrzött frissítést a háttérfeladat készítette elő. */
     val readyFromBackground: Boolean = false,
+    /** Mentett (offline) adatot mutatunk, mert a lekérés nem sikerült: a mentés ideje (C. 24.). */
+    val savedAt: java.time.Instant? = null,
 ) {
     /** Azonos néven más repó: a telepítés tiltva, amíg a felhasználó nem dönt (C. 19.). */
     val installBlockedByRepo: Boolean get() = tracked?.repoState == RepoState.ID_CHANGED
@@ -190,8 +192,13 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
             val readme = details.readme.value?.let { withContext(Dispatchers.Default) { ReadmeParser.parse(it.markdown, context) } }
             val resolved = details.releases.value?.let(ReleaseResolver::resolve)
             val installed = withContext(Dispatchers.IO) { subject.packageName?.let(container.installedPackages::get) }
+            val savedAt = listOf(details.repo, details.releases, details.readme)
+                .filter { loaded -> loaded.error == DetailsError.Network && loaded.value != null }
+                .mapNotNull { loaded -> loaded.fetchedAt }
+                .minOrNull()
             _state.update {
                 it.copy(
+                    savedAt = savedAt,
                     loading = false,
                     repo = repo,
                     repoError = details.repo.error,

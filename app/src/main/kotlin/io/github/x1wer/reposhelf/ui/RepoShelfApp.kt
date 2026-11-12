@@ -32,6 +32,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.x1wer.reposhelf.R
+import io.github.x1wer.reposhelf.RepoShelfApplication
+import io.github.x1wer.reposhelf.ui.common.OfflineBanner
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedApp
 import io.github.x1wer.reposhelf.ui.apps.MyAppsScreen
 import io.github.x1wer.reposhelf.ui.apps.UpdatesScreen
@@ -108,10 +117,16 @@ fun RepoShelfApp(
             }
         },
     ) { innerPadding ->
+      val context = LocalContext.current
+      val online by remember { (context.applicationContext as RepoShelfApplication).container.connectivity.online }.collectAsState()
+      Column(Modifier.padding(innerPadding)) {
+        // Offline: a helyi funkciók működnek; a csak online műveletekről a sáv tájékoztat (C. 24.).
+        if (!online) OfflineBanner()
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.DISCOVER.route,
-            modifier = Modifier.padding(innerPadding),
+            // A külső Scaffold már levonta az állapotsor helyét: a képernyők felső sávja ne számolja újra.
+            modifier = Modifier.weight(1f).consumeWindowInsets(WindowInsets.statusBars),
         ) {
             val openTracked: (TrackedApp) -> Unit = { app ->
                 // Katalógusbeli appnál a katalógus-adatlap (a követés ott is látszik), saját hozzáadásúnál a követett sor.
@@ -152,5 +167,6 @@ fun RepoShelfApp(
                 SettingsScreen()
             }
         }
+      }
     }
 }

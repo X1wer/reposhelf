@@ -106,6 +106,7 @@ private fun errorText(resources: android.content.res.Resources, kind: CatalogErr
     CatalogErrorKind.RATE_LIMITED -> resources.getString(R.string.error_rate_limited)
     CatalogErrorKind.POLICY -> resources.getString(R.string.error_policy)
     CatalogErrorKind.INVALID -> resources.getString(R.string.error_invalid)
+    CatalogErrorKind.SIGNATURE -> resources.getString(R.string.error_signature)
     CatalogErrorKind.REJECTED -> resources.getString(R.string.error_rejected)
     CatalogErrorKind.UNSUPPORTED_SCHEMA -> resources.getString(R.string.error_unsupported)
 }

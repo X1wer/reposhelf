@@ -107,3 +107,6 @@ data class CheckSummary(
     val notChecked: Int,
     val resumesAt: Instant?,
 )
+
+/** Az import eredménye (C. 25.): új és frissített alkalmazások, és hány automatikus telepítés-beállítást nem vettünk át. */
+data class ImportSummary(val added: Int, val updated: Int, val autoInstallNotImported: Int)

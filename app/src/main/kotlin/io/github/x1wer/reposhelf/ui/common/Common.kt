@@ -50,4 +50,5 @@ fun CatalogErrorKind.describe(detail: String?): String = when (this) {
     CatalogErrorKind.INVALID -> stringResource(R.string.error_invalid)
     CatalogErrorKind.REJECTED -> stringResource(R.string.error_rejected)
     CatalogErrorKind.UNSUPPORTED_SCHEMA -> stringResource(R.string.error_unsupported)
+    CatalogErrorKind.SIGNATURE -> stringResource(R.string.error_signature)
 }

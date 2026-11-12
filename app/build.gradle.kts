@@ -31,6 +31,12 @@ android {
         )
         // Ennél régebbi katalógust a kliens nem fogad el (D-022). Legalább a beépített katalógus sorszáma.
         buildConfigField("long", "MIN_CATALOG_SERIAL", "1L")
+        // A katalógus-aláírás megbízható kulcsai (keyId:base64 SPKI, vesszővel); üres lista nem fogadható el.
+        val catalogKeys = providers.gradleProperty("reposhelf.catalog.publicKeys").orNull ?: ""
+        require(catalogKeys.isNotBlank() && catalogKeys.split(',').all { it.trim().matches(Regex("^[a-z0-9][a-z0-9._-]{1,63}:[A-Za-z0-9+/=]{40,400}$")) }) {
+            "Érvénytelen vagy hiányzó reposhelf.catalog.publicKeys"
+        }
+        buildConfigField("String", "CATALOG_PUBLIC_KEYS", "\"$catalogKeys\"")
         // Saját frissítés (C. 14., D-062): a saját repó és a release-aláíró elvárt SHA-256 ujjlenyomata(i) build-paraméter
         // (gradle.properties). Üres ujjlenyomat esetén a futó app saját aláírója az elvárt (a telepített példányhoz
         // képest ellenőrzünk, ARCH 10.3.). A végleges release-kulcs a 9. munkamenetben (Q-007).

@@ -3,9 +3,14 @@
 
 package io.github.x1wer.reposhelf.core.model
 
-/** Forráskód-tárhely szolgáltató. Jelenleg csak a GitHub támogatott (C. 4.). */
-enum class ProviderId(val id: String) {
-    GITHUB("github"),
+/**
+ * Forráskód-tárhely szolgáltató (C. 4.). Jelenleg csak a GitHub támogatott. A Codeberg (Forgejo) egy LETILTOTT bejegyzés:
+ * azt ellenőrzi, hogy a réteg alkalmas-e egy második szolgáltatóra (B. 7.6., docs/ARCHITECTURE.md 5.2.). A letiltott
+ * szolgáltatót a [fromId] nem adja vissza, így a katalógus, az import és a tárolt adatok sem hivatkozhatnak rá.
+ */
+enum class ProviderId(val id: String, val enabled: Boolean) {
+    GITHUB("github", enabled = true),
+    CODEBERG("codeberg", enabled = false),
     ;
 
     /**
@@ -15,17 +20,24 @@ enum class ProviderId(val id: String) {
      */
     fun isValidOwner(owner: String): Boolean = when (this) {
         GITHUB -> GITHUB_OWNER.matches(owner)
+        CODEBERG -> FORGEJO_OWNER.matches(owner)
     }
 
     fun isValidRepoName(name: String): Boolean = when (this) {
         GITHUB -> GITHUB_REPO.matches(name) && name != "." && name != ".." && !name.endsWith(".git", ignoreCase = true)
+        CODEBERG -> FORGEJO_REPO.matches(name) && name != "." && name != ".." && !name.endsWith(".git", ignoreCase = true)
     }
 
     companion object {
         private val GITHUB_OWNER = Regex("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
         private val GITHUB_REPO = Regex("^[A-Za-z0-9._-]{1,100}$")
 
-        fun fromId(id: String): ProviderId? = entries.firstOrNull { it.id == id }
+        /** Forgejo-szabály: betű, szám, `_`, `-`, `.`; legfeljebb 40 (tulajdonos) / 100 (repó) karakter. */
+        private val FORGEJO_OWNER = Regex("^[A-Za-z0-9_](?:[A-Za-z0-9_.-]{0,38}[A-Za-z0-9_])?$")
+        private val FORGEJO_REPO = Regex("^[A-Za-z0-9_.-]{1,100}$")
+
+        /** Csak engedélyezett szolgáltató; ismeretlen vagy letiltott azonosítónál `null`. */
+        fun fromId(id: String): ProviderId? = entries.firstOrNull { it.id == id && it.enabled }
     }
 }
 

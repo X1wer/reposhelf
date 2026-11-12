@@ -6,6 +6,7 @@ package io.github.x1wer.reposhelf.core.data.db
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Test
@@ -84,7 +85,7 @@ class MigrationTest {
             assertEquals("aa", dao.pin("com.example")?.certsSha256)
             dao.upsertNotification(NotificationLogEntity("update:7", "release:1", 1))
             assertEquals("release:1", dao.notification("update:7")?.stateHash)
-            assertEquals(4, db.openHelper.readableDatabase.version)
+            assertEquals(5, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -104,7 +105,30 @@ class MigrationTest {
             assertEquals("aa", db.trackedAppDao().pin("com.example")?.certsSha256)
             assertEquals("release:2", db.trackedAppDao().notification("update:1")?.stateHash)
             db.safetyDao().insertHistory(UpdateHistoryEntity(trackedAppId = 1, appName = "A", packageName = "com.example", fromVersionName = "1", fromVersionCode = 1, toVersionName = "2", toVersionCode = 2, atMillis = 5, outcome = "SUCCESS", failureCode = null, failureMessage = null, method = "MANUAL"))
-            assertEquals(4, db.openHelper.readableDatabase.version)
+            assertEquals(5, db.openHelper.readableDatabase.version)
+        } finally {
+            db.close()
+            file.delete()
+        }
+    }
+
+    @Test
+    fun version4_migratesTo5_keepingHistoryAndAddingTheDetailsCache() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = context.getDatabasePath("migration-test-4.db").apply { parentFile?.mkdirs(); delete() }
+        createVersion(file, 4) { db ->
+            db.execSQL("INSERT INTO update_history (trackedAppId, appName, packageName, fromVersionName, fromVersionCode, toVersionName, toVersionCode, atMillis, outcome, failureCode, failureMessage, method) VALUES (1, 'A', 'com.example', '1', 1, '2', 2, 5, 'SUCCESS', NULL, NULL, 'MANUAL')")
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, file.path).build()
+        try {
+            assertEquals("A", db.safetyDao().observeHistory(10).first().single().appName)
+            val store = io.github.x1wer.reposhelf.core.data.details.RoomDetailsStore(db, maxEntries = 2)
+            listOf("a", "b", "c").forEachIndexed { i, key ->
+                store.write(key, io.github.x1wer.reposhelf.core.data.details.StoredDetails("{}", null, java.time.Instant.ofEpochMilli(i.toLong())))
+            }
+            assertEquals(null, store.read("a"), "a felső korlát fölött a legrégebbi törlődik")
+            assertEquals("{}", store.read("c")?.payload)
+            assertEquals(5, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -128,7 +152,7 @@ class MigrationTest {
             assertNull(tracked.pin("com.beemdevelopment.aegis"))
             tracked.upsertPin(SignerPinEntity("com.beemdevelopment.aegis", "ab", "FIRST_INSTALL_VIA_US", 1, null))
             assertEquals("ab", tracked.pin("com.beemdevelopment.aegis")?.certsSha256)
-            assertTrue(db.openHelper.readableDatabase.version == 4)
+            assertTrue(db.openHelper.readableDatabase.version == 5)
         } finally {
             db.close()
             file.delete()

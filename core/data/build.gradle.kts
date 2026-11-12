@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    // Az offline adatlap-gyorsítótár és az import/export JSON-formátuma (7. munkamenet).
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -42,6 +44,7 @@ dependencies {
     api(libs.androidx.datastore.preferences)
     ksp(libs.androidx.room.compiler)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)

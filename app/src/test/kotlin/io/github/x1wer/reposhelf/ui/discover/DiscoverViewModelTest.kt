@@ -7,6 +7,9 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogConfig
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogRepository
+import io.github.x1wer.reposhelf.core.data.catalog.SignedCatalog
+import io.github.x1wer.reposhelf.core.catalog.CatalogSignatureVerifier
+import io.github.x1wer.reposhelf.BuildConfig
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
 import io.github.x1wer.reposhelf.core.model.CatalogCategory
 import io.github.x1wer.reposhelf.core.network.ConcurrencyLimiter
@@ -54,8 +57,16 @@ class DiscoverViewModelTest {
             dao = db.catalogDao(),
             fetcher = fetcher,
             // Lezárt port: azonnali kapcsolódási hiba, mint offline állapotban.
-            config = CatalogConfig("https://127.0.0.1:1/catalog.json".toHttpUrl(), HttpPolicy.of("127.0.0.1", maxBodyBytes = 1024), minimumSerial = 1),
-            bundledCatalog = { File("src/main/assets/catalog/catalog-v1.json").readBytes() },
+            config = CatalogConfig(
+                url = "https://127.0.0.1:1/catalog.json".toHttpUrl(),
+                signatureUrl = "https://127.0.0.1:1/catalog.json.sig".toHttpUrl(),
+                verifier = CatalogSignatureVerifier(CatalogSignatureVerifier.parseKeys(BuildConfig.CATALOG_PUBLIC_KEYS)),
+                policy = HttpPolicy.of("127.0.0.1", maxBodyBytes = 1024),
+                minimumSerial = 1,
+            ),
+            bundledCatalog = {
+                SignedCatalog(File("src/main/assets/catalog/catalog-v1.json").readBytes(), File("src/main/assets/catalog/catalog-v1.json.sig").readBytes())
+            },
         )
         viewModel = DiscoverViewModel(repository)
     }

@@ -21,6 +21,7 @@ fun formatDateTime(instant: Instant): String =
 /** A repó webes oldala (csak HTTPS, a szolgáltató saját hosztján). */
 fun RepoRef.webUrl(): String = when (provider) {
     ProviderId.GITHUB -> "https://github.com/$owner/$name"
+    ProviderId.CODEBERG -> "https://codeberg.org/$owner/$name"
 }
 
 fun openUrl(context: Context, url: String) = startSafely(context, Intent(Intent.ACTION_VIEW, Uri.parse(url)))

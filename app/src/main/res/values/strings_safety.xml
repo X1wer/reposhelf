@@ -99,6 +99,20 @@
     <string name="self_prompt_yes">Check for updates</string>
     <string name="self_prompt_no">Don\'t check</string>
 
+    <!-- Export / import (C. 25.) -->
+    <string name="transfer_section">Export and import</string>
+    <string name="transfer_note">The export contains your followed and favorite apps, your own sources and per-app update settings. It contains no tokens, signing keys or installation data. Importing never installs or downloads anything.</string>
+    <string name="transfer_export">Export…</string>
+    <string name="transfer_import">Import…</string>
+    <string name="transfer_exported">Exported apps: %1$d.</string>
+    <string name="transfer_imported">Import done. New: %1$d, updated: %2$d, skipped invalid entries: %3$d.</string>
+    <string name="transfer_auto_install_not_imported">Apps whose automatic installation setting was not imported: %1$d. You can turn it on from the app page.</string>
+    <string name="transfer_read_failed">The file could not be read.</string>
+    <string name="transfer_write_failed">The file could not be written.</string>
+    <string name="transfer_too_large">The file is too large or has too many entries.</string>
+    <string name="transfer_unsupported">The file was made by a newer version of RepoShelf. Update the app to import it.</string>
+    <string name="transfer_not_a_list">This is not a RepoShelf app list.</string>
+
     <!-- Notifications -->
     <string name="notif_self_available_title">RepoShelf update available</string>
     <string name="notif_self_ready_title">RepoShelf update ready to install</string>

@@ -18,6 +18,13 @@ import io.github.x1wer.reposhelf.core.network.testing.MutableClock
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
+import io.github.x1wer.reposhelf.core.catalog.CatalogSignatureVerifier
+import io.github.x1wer.reposhelf.core.catalog.TrustedCatalogKey
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.security.spec.ECGenParameterSpec
+import java.util.Base64
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -40,7 +47,7 @@ class CatalogRepositoryTest {
     private lateinit var db: AppDatabase
     private lateinit var https: HttpsTestServer
     private val clock = MutableClock(Instant.parse("2026-11-10T10:00:00Z"))
-    private var seed: ByteArray? = catalogJson(1, SAMPLE)
+    private var seed: SignedCatalog? = signed(catalogJson(1, SAMPLE))
 
     private fun repository(minimumSerial: Long = 1): CatalogRepository {
         val client = HttpClients.create("RepoShelf-Test/1") { https.trustTestCertificate(this) }
@@ -50,6 +57,8 @@ class CatalogRepositoryTest {
             fetcher = fetcher,
             config = CatalogConfig(
                 url = https.server.url("/dist/v1/catalog.json"),
+                signatureUrl = https.server.url("/dist/v1/catalog.json.sig"),
+                verifier = CatalogSignatureVerifier(listOf(TrustedCatalogKey("test-key", KEY.public))),
                 policy = HttpPolicy.of(https.host, maxBodyBytes = 8 * HttpPolicy.MIB),
                 minimumSerial = minimumSerial,
                 minRefreshInterval = Duration.ofHours(6),
@@ -71,6 +80,46 @@ class CatalogRepositoryTest {
     fun tearDown() {
         db.close()
         https.close()
+    }
+
+    /** A katalógus és a hozzá tartozó aláírás (a kliens az aláírást a katalógus után kéri le). */
+    private fun enqueueSigned(body: ByteArray, etag: String? = null, signatureFile: ByteArray? = signatureFile(body)) {
+        https.server.enqueue(MockResponse.Builder().code(200).body(String(body)).apply { etag?.let { addHeader("ETag", it) } }.build())
+        https.server.enqueue(
+            if (signatureFile == null) MockResponse.Builder().code(404).body("Not Found").build()
+            else MockResponse.Builder().code(200).body(String(signatureFile)).build(),
+        )
+    }
+
+    @Test
+    fun refresh_unsignedOrTamperedCatalog_isRejected_andTheLastValidStays() = runBlocking {
+        val repo = repository()
+        repo.ensureInitialized()
+        // Hiányzó aláírás.
+        enqueueSigned(catalogJson(2, SAMPLE.take(1)), signatureFile = null)
+        val missing = assertIs<RefreshOutcome.Failed>(repo.refresh(force = true))
+        assertEquals(CatalogErrorKind.SIGNATURE, missing.kind)
+        assertEquals("missing", missing.detail)
+        // Egy másik (érvényes) katalógus aláírása: a tartalmat módosították.
+        enqueueSigned(catalogJson(2, SAMPLE.take(1)), signatureFile = signatureFile(catalogJson(2, SAMPLE)))
+        assertEquals(CatalogErrorKind.SIGNATURE, assertIs<RefreshOutcome.Failed>(repo.refresh(force = true)).kind)
+        // Nem megbízható kulccsal aláírt katalógus.
+        enqueueSigned(catalogJson(2, SAMPLE.take(1)), signatureFile = signatureFile(catalogJson(2, SAMPLE.take(1)), keyPair(), "test-key"))
+        assertEquals(CatalogErrorKind.SIGNATURE, assertIs<RefreshOutcome.Failed>(repo.refresh(force = true)).kind)
+
+        val status = repo.status.first()
+        assertEquals(CatalogSource.BUNDLED, status.source)
+        assertEquals(SAMPLE_APPS.size, status.appCount)
+        assertEquals(CatalogErrorKind.SIGNATURE, status.lastError)
+    }
+
+    @Test
+    fun bundledCatalogWithoutValidSignature_isNotLoaded() = runBlocking {
+        seed = SignedCatalog(catalogJson(1, SAMPLE), null)
+        assertIs<InitOutcome.BundledCatalogInvalid>(repository().ensureInitialized())
+        seed = SignedCatalog(catalogJson(1, SAMPLE), signatureFile(catalogJson(1, SAMPLE.take(1))))
+        assertIs<InitOutcome.BundledCatalogInvalid>(repository().ensureInitialized())
+        assertTrue(!repository().status.first().hasCatalog)
     }
 
     private suspend fun CatalogRepository.names(raw: String, category: CatalogCategory? = null) =
@@ -101,15 +150,13 @@ class CatalogRepositoryTest {
     fun refresh_acceptsNewerCatalog_thenUsesConditionalRequest() = runBlocking {
         val repo = repository()
         repo.ensureInitialized()
-        https.server.enqueue(
-            MockResponse.Builder().code(200).body(String(catalogJson(2, SAMPLE.take(2))))
-                .addHeader("ETag", "\"v2\"").build(),
-        )
+        enqueueSigned(catalogJson(2, SAMPLE.take(2)), etag = "\"v2\"")
         assertEquals(RefreshOutcome.Updated(appCount = 2, rejectedCount = 0), repo.refresh(force = true))
         val status = repo.status.first()
         assertEquals(CatalogSource.REMOTE, status.source)
         assertEquals(2L, status.serial)
         assertNull(https.server.takeRequest().headers["If-None-Match"], "a beépített katalógusnak nincs ETag-je")
+        assertEquals("/dist/v1/catalog.json.sig", https.server.takeRequest().url.encodedPath, "a katalógus után az aláírása")
 
         https.server.enqueue(MockResponse.Builder().code(304).build())
         assertEquals(RefreshOutcome.Unchanged, repo.refresh(force = true))
@@ -121,10 +168,10 @@ class CatalogRepositoryTest {
     fun refresh_rejectsRollback_andKeepsCurrentCatalog() = runBlocking {
         val repo = repository()
         repo.ensureInitialized()
-        https.server.enqueue(MockResponse.Builder().code(200).body(String(catalogJson(3, SAMPLE))).build())
+        enqueueSigned(catalogJson(3, SAMPLE))
         assertIs<RefreshOutcome.Updated>(repo.refresh(force = true))
 
-        https.server.enqueue(MockResponse.Builder().code(200).body(String(catalogJson(2, SAMPLE.take(1)))).build())
+        enqueueSigned(catalogJson(2, SAMPLE.take(1)))
         val outcome = assertIs<RefreshOutcome.Failed>(repo.refresh(force = true))
         assertEquals(CatalogErrorKind.REJECTED, outcome.kind)
         val status = repo.status.first()
@@ -138,10 +185,10 @@ class CatalogRepositoryTest {
         val repo = repository()
         repo.ensureInitialized()
 
-        https.server.enqueue(MockResponse.Builder().code(200).body("{\"schemaVersion\":1,\"apps\":[").build())
+        enqueueSigned("{\"schemaVersion\":1,\"apps\":[".toByteArray())
         assertEquals(CatalogErrorKind.INVALID, assertIs<RefreshOutcome.Failed>(repo.refresh(force = true)).kind)
 
-        https.server.enqueue(MockResponse.Builder().code(200).body("{\"schemaVersion\":2,\"items\":[]}").build())
+        enqueueSigned("{\"schemaVersion\":2,\"items\":[]}".toByteArray())
         assertEquals(CatalogErrorKind.UNSUPPORTED_SCHEMA, assertIs<RefreshOutcome.Failed>(repo.refresh(force = true)).kind)
         assertEquals(CatalogErrorKind.UNSUPPORTED_SCHEMA, repo.status.first().lastError)
 
@@ -176,7 +223,7 @@ class CatalogRepositoryTest {
     @Test
     fun largeCatalog_searchStaysFast() = runBlocking {
         val many = (1..5000).map { i -> Quad("app-$i", "Generated App $i", "gen$i/repo", listOf("kulcs$i", "tool", "segédprogram"), "utilities") }
-        seed = catalogJson(1, many)
+        seed = signed(catalogJson(1, many))
         val repo = repository()
         assertEquals(InitOutcome.Seeded(5000), repo.ensureInitialized())
         repo.search(SearchQuery.of("warmup"))
@@ -190,6 +237,18 @@ class CatalogRepositoryTest {
     private data class Quad(val id: String, val name: String, val repo: String, val keywords: List<String>, val category: String)
 
     private companion object {
+        fun keyPair(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+
+        /** A teszt saját, futásidőben generált kulcsa (privát kulcs nem kerül a repóba). */
+        val KEY: KeyPair = keyPair()
+
+        fun signatureFile(bytes: ByteArray, key: KeyPair = KEY, keyId: String = "test-key"): ByteArray {
+            val der = Signature.getInstance("SHA256withECDSA").run { initSign(key.private); update(bytes); sign() }
+            return """{"format":1,"signatures":[{"keyId":"$keyId","algorithm":"ecdsa-p256-sha256","value":"${Base64.getEncoder().encodeToString(der)}"}]}""".toByteArray()
+        }
+
+        fun signed(bytes: ByteArray) = SignedCatalog(bytes, signatureFile(bytes))
+
         /** (id, név, repó, kulcsszavak, kategória) */
         val SAMPLE = listOf(
             Quad("obtainium", "Obtainium", "ImranR98/Obtainium", listOf("update", "frissítés"), "system"),

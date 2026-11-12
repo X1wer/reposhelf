@@ -3,6 +3,9 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <resources>
     <string name="action_back">Back</string>
+    <string name="action_share">Share</string>
+    <string name="details_saved_offline">Showing the details saved on %1$s. Refreshing, downloading and installing need an internet connection.</string>
+    <string name="offline_banner">No internet connection. Saved data (catalog, your apps, saved app details, history, settings) is available; checking, downloading and installing need a connection.</string>
     <string name="action_open_repo">Open repository</string>
     <string name="action_retry">Retry</string>
     <string name="action_cancel">Cancel</string>

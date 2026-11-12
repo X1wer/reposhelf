@@ -3,12 +3,13 @@
 
 package io.github.x1wer.reposhelf.core.data.tracked
 
+import io.github.x1wer.reposhelf.core.data.catalog.toModelOrNull
+import io.github.x1wer.reposhelf.core.data.transfer.AppListEntry
 import android.database.sqlite.SQLiteConstraintException
 import io.github.x1wer.reposhelf.core.apk.CheckStatus
 import io.github.x1wer.reposhelf.core.apk.DeviceProfile
 import io.github.x1wer.reposhelf.core.apk.DownloadedApk
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
-import io.github.x1wer.reposhelf.core.data.catalog.toModelOrNull
 import io.github.x1wer.reposhelf.core.data.db.ApkAnalysisEntity
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
 import io.github.x1wer.reposhelf.core.data.db.AppSettingsOverrideEntity
@@ -50,6 +51,7 @@ import io.github.x1wer.reposhelf.core.update.UpdateFailure
 import io.github.x1wer.reposhelf.core.update.UpdateStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -236,6 +238,57 @@ class TrackedAppsRepository(
                 checkStatus = null, lastCheckAtMillis = null,
             ),
         )
+    }
+
+    // ---- Import / export (C. 25.) ----
+
+    /** A követett és kedvenc alkalmazások exportja (saját források és alkalmazásonkénti beállítások is). */
+    suspend fun exportList(): List<AppListEntry> = dao.observeAll().first().mapNotNull { row ->
+        val app = row.app
+        if (!app.isFollowed && !app.isFavorite) return@mapNotNull null
+        val ref = app.toRef() ?: return@mapNotNull null
+        AppListEntry(ref, app.repoId, app.catalogId, app.displayName, app.isFollowed, app.isFavorite, row.override.toOverrides().takeUnless { it.isEmpty })
+    }
+
+    /**
+     * Import (C. 25.): csak listát és beállítást ír; semmit nem telepít, nem tölt le és nem kér le a hálózatról.
+     * Meglévő alkalmazásnál a követés és a kedvenc csak bekapcsolódhat (az import nem töröl). A katalógusazonosító csak
+     * akkor érvényes, ha a helyi katalógusban ugyanarra a repóra mutat. Az automatikus telepítést importból nem kapcsoljuk
+     * be (a felhasználó az adatlapon kapcsolhatja): így egy fájl még közvetve sem indíthat telepítést.
+     */
+    suspend fun importList(entries: List<AppListEntry>): ImportSummary {
+        var added = 0
+        var updated = 0
+        var autoInstallDropped = 0
+        val now = clock.millis()
+        for (entry in entries) {
+            val overrides = entry.overrides?.let { o ->
+                if (o.autoInstall == true) {
+                    autoInstallDropped++
+                    o.copy(autoInstall = null)
+                } else {
+                    o
+                }
+            }
+            val catalog = entry.catalogId?.let { catalogDao.byId(it) }?.toModelOrNull()?.takeIf { it.repo.key == entry.repo.key }
+            val existing = catalog?.let { rowForCatalog(it) } ?: dao.byRepoKey(entry.repo.key)
+                ?: entry.repositoryId?.let { dao.byRepoId(entry.repo.provider.id, it) }
+            val id = if (existing != null) {
+                dao.update(existing.copy(isFollowed = existing.isFollowed || entry.followed, isFavorite = existing.isFavorite || entry.favorite))
+                updated++
+                existing.id
+            } else {
+                val entity = if (catalog != null) {
+                    newEntity(AppOrigin.CATALOG, catalog.repo, catalog.id, catalog.repositoryId?.value, null, catalog.packageName, catalog.name, now)
+                } else {
+                    newEntity(AppOrigin.USER, entry.repo, null, entry.repositoryId, null, null, entry.name, now)
+                }
+                added++
+                insertOrExisting(entity.copy(isFollowed = entry.followed, isFavorite = entry.favorite))
+            }
+            overrides?.takeUnless { it.isEmpty }?.let { o -> updateOverrides(id) { o } }
+        }
+        return ImportSummary(added, updated, autoInstallDropped)
     }
 
     // ---- Aláíró és elemzések (C. 19.) ----

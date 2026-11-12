@@ -8,6 +8,8 @@ import android.util.Log
 import io.github.x1wer.reposhelf.core.apk.ApkVerifier
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogConfig
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogRepository
+import io.github.x1wer.reposhelf.core.data.catalog.SignedCatalog
+import io.github.x1wer.reposhelf.core.catalog.CatalogSignatureVerifier
 import io.github.x1wer.reposhelf.background.BackgroundUpdates
 import io.github.x1wer.reposhelf.background.Notifier
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
@@ -20,6 +22,7 @@ import io.github.x1wer.reposhelf.selfupdate.SelfUpdater
 import io.github.x1wer.reposhelf.core.data.notifications.NotificationLog
 import io.github.x1wer.reposhelf.core.data.settings.SettingsRepository
 import io.github.x1wer.reposhelf.core.data.details.AppDetailsRepository
+import io.github.x1wer.reposhelf.core.data.details.RoomDetailsStore
 import io.github.x1wer.reposhelf.core.data.tracked.RequestBudget
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedAppsRepository
 import io.github.x1wer.reposhelf.core.installer.InstallCoordinator
@@ -90,6 +93,8 @@ class AppContainer(private val context: Context) {
             fetcher = fetcher,
             config = CatalogConfig(
                 url = BuildConfig.CATALOG_URL.toHttpUrl(),
+                signatureUrl = "${BuildConfig.CATALOG_URL}.sig".toHttpUrl(),
+                verifier = CatalogSignatureVerifier(CatalogSignatureVerifier.parseKeys(BuildConfig.CATALOG_PUBLIC_KEYS)),
                 policy = HttpPolicy.of("raw.githubusercontent.com", maxBodyBytes = 8 * HttpPolicy.MIB),
                 minimumSerial = BuildConfig.MIN_CATALOG_SERIAL,
             ),
@@ -101,9 +106,12 @@ class AppContainer(private val context: Context) {
     /** A forrásszolgáltatók. Jelenleg csak a GitHub (C. 4.). */
     val sourceProviders by lazy { ProviderRegistry(listOf(GitHubProvider(fetcher))) }
 
-    val appDetails by lazy { AppDetailsRepository(sourceProviders, clock) }
+    val appDetails by lazy { AppDetailsRepository(sourceProviders, clock, store = RoomDetailsStore(database)) }
 
     val installedPackages by lazy { InstalledPackages(context) }
+
+    /** Az internetkapcsolat állapota a felületnek (C. 24.). */
+    val connectivity by lazy { io.github.x1wer.reposhelf.ui.common.ConnectivityMonitor(context) }
 
     /**
      * API-keret a háttérben futó (nem interaktív) ellenőrzésekhez: mindig marad legalább [UI_RESERVE_REQUESTS] kérés a
@@ -121,6 +129,7 @@ class AppContainer(private val context: Context) {
 
     private fun rateLimitScope(provider: ProviderId): String = when (provider) {
         ProviderId.GITHUB -> GitHubProvider.RATE_LIMIT_SCOPE
+        ProviderId.CODEBERG -> "codeberg" // letiltva; regisztrált szolgáltató nincs hozzá
     }
 
     /** Biztonsági figyelmeztetések (C. 20.). */
@@ -170,9 +179,12 @@ class AppContainer(private val context: Context) {
      * Csak az I/O-hibát nyeli el; programhiba (pl. hiányzó API egy régebbi Androidon) ne váljon csendben
      * „nincs katalógus” állapottá (D-070).
      */
-    private suspend fun readBundledCatalog(): ByteArray? = withContext(Dispatchers.IO) {
+    private suspend fun readBundledCatalog(): SignedCatalog? = withContext(Dispatchers.IO) {
         try {
-            context.assets.open(BUNDLED_CATALOG_ASSET).use { input -> input.readAtMost(MAX_BUNDLED_BYTES) }
+            val catalog = context.assets.open(BUNDLED_CATALOG_ASSET).use { input -> input.readAtMost(MAX_BUNDLED_BYTES) } ?: return@withContext null
+            // Az aláírás a beépített katalógusnál is kötelező (ugyanaz a szabály, mint a letöltöttnél).
+            val signature = context.assets.open("$BUNDLED_CATALOG_ASSET.sig").use { input -> input.readAtMost(CatalogSignatureVerifier.MAX_SIGNATURE_FILE) }
+            SignedCatalog(catalog, signature)
         } catch (e: IOException) {
             Log.w(TAG, "A beépített katalógus nem olvasható", e)
             null

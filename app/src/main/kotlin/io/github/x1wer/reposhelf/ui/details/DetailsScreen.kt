@@ -73,6 +73,9 @@ import io.github.x1wer.reposhelf.core.apk.PreliminaryCheck
 import io.github.x1wer.reposhelf.core.apk.SignerIdentity
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
 import io.github.x1wer.reposhelf.core.data.details.DetailsError
+import io.github.x1wer.reposhelf.ui.common.formatDateTime
+import io.github.x1wer.reposhelf.ui.common.webUrl
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import io.github.x1wer.reposhelf.core.data.tracked.RepoState
 import io.github.x1wer.reposhelf.core.installer.Shortcuts
 import io.github.x1wer.reposhelf.core.model.FindingKind
@@ -112,9 +115,23 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) }
                 },
                 actions = {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val shareTitle = stringResource(R.string.action_share)
+                    state.subject?.let { subject ->
+                        // Megosztás (C. 26.): csak a repó nyilvános webcíme és a neve, a rendszer megosztó ablakával.
+                        IconButton(onClick = {
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND)
+                                .setType("text/plain")
+                                .putExtra(android.content.Intent.EXTRA_SUBJECT, subject.name)
+                                .putExtra(android.content.Intent.EXTRA_TEXT, "${subject.name}: ${subject.repo.webUrl()}")
+                            io.github.x1wer.reposhelf.ui.common.startSafely(context, android.content.Intent.createChooser(send, shareTitle))
+                        }) {
+                            Icon(Icons.Filled.Share, contentDescription = shareTitle)
+                        }
+                    }
                     state.repo?.htmlUrl?.let { url ->
                         IconButton(onClick = { uriHandler.openUri(url) }) {
-                            Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.action_open_repo))
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = stringResource(R.string.action_open_repo))
                         }
                     }
                 },
@@ -189,6 +206,7 @@ private fun Errors(state: DetailsUiState, onRetry: () -> Unit) {
     if (errors.isEmpty()) return
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            state.savedAt?.let { Text(stringResource(R.string.details_saved_offline, formatDateTime(it)), color = MaterialTheme.colorScheme.onErrorContainer) }
             errors.forEach { Text(errorText(it), color = MaterialTheme.colorScheme.onErrorContainer) }
             TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
         }

@@ -8,6 +8,8 @@ import io.github.x1wer.reposhelf.core.catalog.CatalogAcceptance
 import io.github.x1wer.reposhelf.core.catalog.CatalogDecision
 import io.github.x1wer.reposhelf.core.catalog.CatalogParseResult
 import io.github.x1wer.reposhelf.core.catalog.CatalogParser
+import io.github.x1wer.reposhelf.core.catalog.CatalogSignatureCheck
+import io.github.x1wer.reposhelf.core.catalog.CatalogSignatureVerifier
 import io.github.x1wer.reposhelf.core.catalog.SearchIndex
 import io.github.x1wer.reposhelf.core.catalog.SearchIndexText
 import io.github.x1wer.reposhelf.core.catalog.SearchQuery
@@ -38,6 +40,10 @@ import java.time.Instant
 /** A katalógus letöltésének beállításai (docs/ARCHITECTURE.md 7.4., D-021). */
 data class CatalogConfig(
     val url: HttpUrl,
+    /** A leválasztott aláírás (`catalog.json.sig`, docs/ARCHITECTURE.md 7.3.). */
+    val signatureUrl: HttpUrl,
+    /** Az alkalmazásba fordított megbízható kulcsokkal ellenőriz (C. 3.2.). */
+    val verifier: CatalogSignatureVerifier,
     val policy: HttpPolicy,
     /** Az appba fordított minimális sorszám (`MIN_CATALOG_SERIAL`, D-022). */
     val minimumSerial: Long,
@@ -47,7 +53,10 @@ data class CatalogConfig(
 
 enum class CatalogSource { BUNDLED, REMOTE }
 
-enum class CatalogErrorKind { NETWORK, HTTP, RATE_LIMITED, POLICY, INVALID, UNSUPPORTED_SCHEMA, REJECTED }
+enum class CatalogErrorKind { NETWORK, HTTP, RATE_LIMITED, POLICY, INVALID, UNSUPPORTED_SCHEMA, REJECTED, SIGNATURE }
+
+/** Egy katalógusfájl és a leválasztott aláírása (az aláírás hiányozhat: akkor elutasítjuk). */
+class SignedCatalog(val catalog: ByteArray, val signature: ByteArray?)
 
 /** A felületnek szóló katalógus-állapot. */
 data class CatalogStatus(
@@ -91,14 +100,15 @@ sealed interface RefreshOutcome {
  * - az új katalógus csak teljes validáció és a sorszám-ellenőrzés után, egy tranzakcióban váltja le a régit;
  * - bármely hibánál az utolsó érvényes katalógus marad, a hiba pedig az állapotban látható.
  *
- * A katalógus kriptográfiai aláírásának ellenőrzése a 7. munkamenetben kerül a [processRemote] lépései közé
- * (docs/ARCHITECTURE.md 7.3.). Addig a letöltött katalógus hitelessége NINCS ellenőrizve (lásd PROJECT_PROGRESS.md).
+ * Hitelesség (C. 3.2., docs/ARCHITECTURE.md 7.3.): a letöltött ÉS a beépített katalógus is csak akkor fogadható el, ha
+ * a leválasztott aláírása egy alkalmazásba fordított kulccsal érvényes, a feldolgozás ELŐTT. A GitHubon való elhelyezés
+ * önmagában nem tesz megbízhatóvá egy katalógust.
  */
 class CatalogRepository(
     private val dao: CatalogDao,
     private val fetcher: HttpFetcher,
     private val config: CatalogConfig,
-    private val bundledCatalog: suspend () -> ByteArray?,
+    private val bundledCatalog: suspend () -> SignedCatalog?,
     private val clock: Clock = Clock.systemUTC(),
     private val parser: CatalogParser = CatalogParser(),
 ) {
@@ -112,8 +122,10 @@ class CatalogRepository(
 
     suspend fun ensureInitialized(): InitOutcome = mutex.withLock {
         if (dao.state() != null) return InitOutcome.AlreadyPresent
-        val bytes = bundledCatalog() ?: return InitOutcome.NoBundledCatalog
-        when (val parsed = parser.parse(bytes)) {
+        val bundled = bundledCatalog() ?: return InitOutcome.NoBundledCatalog
+        val signature = config.verifier.verify(bundled.catalog, bundled.signature)
+        if (signature !is CatalogSignatureCheck.Valid) return InitOutcome.BundledCatalogInvalid(signature.toString())
+        when (val parsed = parser.parse(bundled.catalog)) {
             is CatalogParseResult.Parsed -> {
                 val decision = CatalogAcceptance.decide(null, parsed.catalog, config.minimumSerial)
                 if (decision != CatalogDecision.Accept) return InitOutcome.BundledCatalogInvalid(decision.toString())
@@ -155,8 +167,33 @@ class CatalogRepository(
         }
     }
 
-    private suspend fun processRemote(response: FetchResponse.Success, state: CatalogStateEntity?, now: Instant): RefreshOutcome =
-        when (val parsed = parser.parse(response.body)) {
+    /** A katalógus aláírásfájlja; `null`, ha nincs (404). Más hibánál a frissítés átmeneti hibaként áll meg. */
+    private suspend fun fetchSignature(): Result<ByteArray?> {
+        val request = FetchRequest(url = config.signatureUrl, policy = config.policy, headers = mapOf("Accept" to "application/json"), validators = null)
+        return when (val response = fetcher.get(request)) {
+            is FetchResponse.Success -> Result.success(response.body)
+            is FetchResponse.HttpError -> if (response.code == 404) Result.success(null) else Result.failure(SignatureFetchFailure(CatalogErrorKind.HTTP, "HTTP ${response.code}"))
+            is FetchResponse.NotModified -> Result.failure(SignatureFetchFailure(CatalogErrorKind.HTTP, "304"))
+            is FetchResponse.RateLimited -> Result.failure(SignatureFetchFailure(CatalogErrorKind.RATE_LIMITED, response.until?.toString()))
+            is FetchResponse.NetworkFailure -> Result.failure(SignatureFetchFailure(CatalogErrorKind.NETWORK, response.cause::class.java.simpleName))
+            is FetchResponse.PolicyViolation -> Result.failure(SignatureFetchFailure(CatalogErrorKind.POLICY, response.reason.name))
+        }
+    }
+
+    private class SignatureFetchFailure(val kind: CatalogErrorKind, val detail: String?) : Exception()
+
+    private suspend fun processRemote(response: FetchResponse.Success, state: CatalogStateEntity?, now: Instant): RefreshOutcome {
+        val signature = fetchSignature().getOrElse { e ->
+            val failure = e as SignatureFetchFailure
+            return fail(state, now, failure.kind, failure.detail)
+        }
+        // Az aláírás a feldolgozás ELŐTT: egy hamis katalógus tartalmát még a sorszám-ellenőrzés sem látja.
+        when (val check = config.verifier.verify(response.body, signature)) {
+            is CatalogSignatureCheck.Valid -> Unit
+            CatalogSignatureCheck.Missing -> return fail(state, now, CatalogErrorKind.SIGNATURE, "missing")
+            is CatalogSignatureCheck.Invalid -> return fail(state, now, CatalogErrorKind.SIGNATURE, check.reason.name)
+        }
+        return when (val parsed = parser.parse(response.body)) {
             is CatalogParseResult.UnsupportedSchema ->
                 fail(state, now, CatalogErrorKind.UNSUPPORTED_SCHEMA, "schemaVersion=${parsed.schemaVersion}")
             is CatalogParseResult.Invalid ->
@@ -176,6 +213,7 @@ class CatalogRepository(
                 }
             }
         }
+    }
 
     private suspend fun fail(state: CatalogStateEntity?, now: Instant, kind: CatalogErrorKind, detail: String?): RefreshOutcome {
         if (state != null) dao.recordFailure(now.toEpochMilli(), kind.name, detail?.take(200))

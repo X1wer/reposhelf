@@ -98,6 +98,20 @@
     <string name="self_prompt_yes">Keressen frissítést</string>
     <string name="self_prompt_no">Ne keressen</string>
 
+    <!-- Exportálás és importálás (C. 25.) -->
+    <string name="transfer_section">Exportálás és importálás</string>
+    <string name="transfer_note">Az export a követett és kedvenc alkalmazásokat, a saját forrásokat és az alkalmazásonkénti frissítési beállításokat tartalmazza. Tokent, aláírókulcsot és telepítési adatot nem. Az import soha nem telepít és nem tölt le semmit.</string>
+    <string name="transfer_export">Exportálás…</string>
+    <string name="transfer_import">Importálás…</string>
+    <string name="transfer_exported">Exportált alkalmazások: %1$d.</string>
+    <string name="transfer_imported">Az import kész. Új: %1$d, frissített: %2$d, kihagyott hibás bejegyzés: %3$d.</string>
+    <string name="transfer_auto_install_not_imported">Az automatikus telepítést %1$d alkalmazásnál nem vettük át; az adatlapon kapcsolható be.</string>
+    <string name="transfer_read_failed">A fájl nem olvasható.</string>
+    <string name="transfer_write_failed">A fájl nem írható.</string>
+    <string name="transfer_too_large">A fájl túl nagy, vagy túl sok bejegyzést tartalmaz.</string>
+    <string name="transfer_unsupported">A fájlt a RepoShelf egy újabb verziója készítette. Az importhoz frissítsd az alkalmazást.</string>
+    <string name="transfer_not_a_list">Ez nem RepoShelf-alkalmazáslista.</string>
+
     <!-- Értesítések -->
     <string name="notif_self_available_title">Új RepoShelf-verzió érhető el</string>
     <string name="notif_self_ready_title">A RepoShelf frissítése telepítésre kész</string>

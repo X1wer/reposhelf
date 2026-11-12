@@ -2,6 +2,9 @@
 <!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 <resources>
+    <string name="details_saved_offline">A(z) %1$s időpontban mentett adatlap látszik. A frissítéshez, a letöltéshez és a telepítéshez internetkapcsolat kell.</string>
+    <string name="offline_banner">Nincs internetkapcsolat. A mentett adatok (katalógus, alkalmazásaid, mentett adatlapok, előzmények, beállítások) elérhetők; az ellenőrzéshez, a letöltéshez és a telepítéshez kapcsolat kell.</string>
+    <string name="action_share">Megosztás</string>
     <string name="action_back">Vissza</string>
     <string name="action_open_repo">Repó megnyitása</string>
     <string name="action_retry">Újra</string>

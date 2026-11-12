@@ -54,6 +54,7 @@
     <string name="error_invalid">the downloaded catalog is invalid</string>
     <string name="error_rejected">the downloaded catalog is older than the current one</string>
     <string name="error_unsupported">the catalog format is newer than this app supports</string>
+    <string name="error_signature">the catalog signature is missing or invalid, so it was not accepted</string>
 
     <string name="refresh_updated">Catalog updated.</string>
     <string name="refresh_unchanged">The catalog is up to date.</string>

@@ -52,6 +52,7 @@
     <string name="error_invalid">a letöltött katalógus érvénytelen</string>
     <string name="error_rejected">a letöltött katalógus régebbi a jelenleginél</string>
     <string name="error_unsupported">a katalógus formátuma újabb, mint amit ez az alkalmazás ismer</string>
+    <string name="error_signature">a katalógus aláírása hiányzik vagy érvénytelen, ezért nem fogadtuk el</string>
 
     <string name="refresh_updated">A katalógus frissült.</string>
     <string name="refresh_unchanged">A katalógus naprakész.</string>
