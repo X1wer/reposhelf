@@ -38,5 +38,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- A saját frissítés eredményének rögzítése a csomagcsere után (C. 14.; docs/ARCHITECTURE.md 14.). -->
+        <receiver
+            android:name=".selfupdate.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

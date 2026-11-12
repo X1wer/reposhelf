@@ -36,6 +36,8 @@ data class GlobalSettings(
     val notifyUpdates: Boolean = true,
     /** Update ownership kérése első telepítéskor (D-043). */
     val requestUpdateOwnership: Boolean = true,
+    /** A RepoShelf saját frissítésének automatikus ellenőrzése (C. 14.; opt-in, D-062). A kézi ellenőrzés mindig elérhető. */
+    val selfUpdateCheck: Boolean = false,
 ) {
     companion object {
         val RELEASE_DELAY_CHOICES = listOf(0, 1, 3, 7)
@@ -94,13 +96,24 @@ data class BackgroundPlan(val notify: Boolean, val download: Boolean, val instal
 /** A háttérben futó ellenőrzés utáni döntés (C. 12.3–12.5.). Tiszta logika, a platformtól független. */
 object BackgroundDecision {
 
-    fun plan(check: UpdateCheck, policy: AppPolicy, global: GlobalSettings, network: NetworkState, installed: Boolean): BackgroundPlan {
+    /**
+     * [blockingWarnings]: van-e az alkalmazásnál nyugtázatlan figyelmeztetés vagy kritikus megállapítás (C. 20.); ilyenkor
+     * nincs automatikus telepítés, amíg a felhasználó nem dönt (pl. tulajdonosváltás).
+     */
+    fun plan(
+        check: UpdateCheck,
+        policy: AppPolicy,
+        global: GlobalSettings,
+        network: NetworkState,
+        installed: Boolean,
+        blockingWarnings: Boolean = false,
+    ): BackgroundPlan {
         if (!policy.checkEnabled || !installed || check.status != UpdateStatus.UPDATE_AVAILABLE) return BackgroundPlan.NOTHING
         val determinate = check.compatibility?.selection.let { it is AssetSelection.Single || it is AssetSelection.SplitSet }
         // Mobiladaton csak a felhasználó kifejezett engedélyével töltünk le (C. 12.3.).
         val networkAllows = network.connected && (!network.metered || global.autoDownloadOnMetered)
         val download = policy.autoDownload && determinate && networkAllows
-        return BackgroundPlan(notify = policy.notify, download = download, install = download && policy.autoInstall)
+        return BackgroundPlan(notify = policy.notify, download = download, install = download && policy.autoInstall && !blockingWarnings)
     }
 }
 
@@ -169,7 +182,11 @@ object UnattendedInstallPolicy {
             return UnattendedReason.NOT_VERIFIED
         }
         val owner = source.updateOwnerPackage
+        // A rendszer harmadik lehetőségként a saját magát frissítő telepítőt is elfogadja („Updating itself”,
+        // `SessionParams.setRequireUserAction`), függetlenül attól, ki telepítette eredetileg (C. 14.).
+        val updatingItself = facts.packageName == ourPackage
         when {
+            updatingItself -> Unit
             owner != null && owner != ourPackage -> return UnattendedReason.OWNED_BY_OTHER
             owner == null && source.installerPackage != ourPackage -> return UnattendedReason.NOT_INSTALLER
         }

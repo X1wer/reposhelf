@@ -9,6 +9,7 @@ import androidx.work.WorkerParameters
 import io.github.x1wer.reposhelf.RepoShelfApplication
 import io.github.x1wer.reposhelf.core.data.catalog.RefreshOutcome
 import io.github.x1wer.reposhelf.core.data.settings.BackgroundRun
+import io.github.x1wer.reposhelf.core.model.ProviderId
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.time.Instant
@@ -41,6 +42,15 @@ class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineW
             if (!isStopped) container.backgroundUpdates.onChecked(app, check, global, network)
         }
         container.settings.recordBackgroundRun(BackgroundRun(Instant.now(), summary.checked, summary.updatesAvailable, summary.notChecked))
+        // A RepoShelf saját frissítése (C. 14.; opt-in): csak ha az API-keretből a felületnek szánt tartalék is megmarad.
+        if (!isStopped && container.requestBudget.canSpend(ProviderId.GITHUB, SELF_CHECK_REQUESTS)) {
+            container.selfUpdater.backgroundCheck(global, network)
+        }
         return Result.success()
+    }
+
+    private companion object {
+        /** A saját repó ellenőrzése: repó + kiadások. */
+        const val SELF_CHECK_REQUESTS = 2
     }
 }

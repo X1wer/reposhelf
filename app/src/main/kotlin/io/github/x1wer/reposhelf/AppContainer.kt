@@ -11,6 +11,12 @@ import io.github.x1wer.reposhelf.core.data.catalog.CatalogRepository
 import io.github.x1wer.reposhelf.background.BackgroundUpdates
 import io.github.x1wer.reposhelf.background.Notifier
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
+import io.github.x1wer.reposhelf.core.data.safety.SecurityWarnings
+import io.github.x1wer.reposhelf.core.data.safety.UpdateHistory
+import io.github.x1wer.reposhelf.core.data.selfupdate.SelfUpdateConfig
+import io.github.x1wer.reposhelf.core.data.selfupdate.SelfUpdates
+import io.github.x1wer.reposhelf.core.installer.InstallSessions
+import io.github.x1wer.reposhelf.selfupdate.SelfUpdater
 import io.github.x1wer.reposhelf.core.data.notifications.NotificationLog
 import io.github.x1wer.reposhelf.core.data.settings.SettingsRepository
 import io.github.x1wer.reposhelf.core.data.details.AppDetailsRepository
@@ -103,7 +109,7 @@ class AppContainer(private val context: Context) {
      * API-keret a háttérben futó (nem interaktív) ellenőrzésekhez: mindig marad legalább [UI_RESERVE_REQUESTS] kérés a
      * felületnek (D-051).
      */
-    private val requestBudget = object : RequestBudget {
+    val requestBudget = object : RequestBudget {
         override fun canSpend(provider: ProviderId, requests: Int): Boolean =
             rateLimits.hasBudget(rateLimitScope(provider), reserve = UI_RESERVE_REQUESTS + requests - 1)
 
@@ -117,9 +123,28 @@ class AppContainer(private val context: Context) {
         ProviderId.GITHUB -> GitHubProvider.RATE_LIMIT_SCOPE
     }
 
+    /** Biztonsági figyelmeztetések (C. 20.). */
+    val warnings by lazy { SecurityWarnings(database, clock) }
+
+    /** Frissítési előzmények (C. 15.). */
+    val history by lazy { UpdateHistory(database, clock) }
+
     /** Követett, kedvenc és saját hozzáadású alkalmazások, frissítésellenőrzés (C. 9–12.1., 19.). */
     val trackedApps by lazy {
-        TrackedAppsRepository(database, sourceProviders, installedPackages, installedPackages::deviceProfile, requestBudget, clock) { settings.current() }
+        TrackedAppsRepository(database, sourceProviders, installedPackages, installedPackages::deviceProfile, requestBudget, clock, warnings) { settings.current() }
+    }
+
+    /** A RepoShelf saját frissítése (C. 14.): a repó és az elvárt aláíró build-paraméter (docs/ARCHITECTURE.md 14.). */
+    val selfUpdater by lazy {
+        val config = SelfUpdateConfig.from(
+            repo = BuildConfig.SELF_UPDATE_REPO,
+            signers = BuildConfig.SELF_UPDATE_SIGNERS,
+            packageName = context.packageName,
+            versionCode = BuildConfig.VERSION_CODE.toLong(),
+            versionName = BuildConfig.VERSION_NAME,
+        )
+        val core = SelfUpdates(config, sourceProviders, trackedApps.analyses, settings, warnings, history, installedPackages::deviceProfile, clock)
+        SelfUpdater(context, this, core, InstallSessions(context), appScope)
     }
 
     val installCoordinator by lazy {

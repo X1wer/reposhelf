@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.x1wer.reposhelf.AppContainer
+import io.github.x1wer.reposhelf.core.data.safety.SecurityWarning
 import io.github.x1wer.reposhelf.RepoShelfApplication
 import io.github.x1wer.reposhelf.core.apk.InstalledAppInfo
 import io.github.x1wer.reposhelf.core.data.tracked.AppOrigin
@@ -83,6 +84,13 @@ class TrackedListViewModel(private val container: AppContainer) : ViewModel() {
     private val eventChannel = Channel<ListEvent>(Channel.BUFFERED)
 
     val icons: StateFlow<Map<String, ImageBitmap>> = _icons
+
+    /** A nyitott, nyugtázatlan biztonsági figyelmeztetések (C. 20.; az INFO csak az adatlapon látszik). */
+    val warnings: StateFlow<List<SecurityWarning>> = container.warnings.observeOpen().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun acknowledgeWarning(id: Long) {
+        viewModelScope.launch { container.warnings.acknowledge(id) }
+    }
     val events: Flow<ListEvent> = eventChannel.receiveAsFlow()
 
     private val _notificationsAllowed = MutableStateFlow(true)

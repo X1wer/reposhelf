@@ -17,8 +17,10 @@ android {
         applicationId = "io.github.x1wer.reposhelf"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        // A versionCode felülírható (-Preposhelf.versionCode=N): a saját frissítés emulátoros szimulációjához két,
+        // azonos kulccsal aláírt, eltérő verziókódú build kell (B. 6.5.). Alapérték: 1.
+        versionCode = providers.gradleProperty("reposhelf.versionCode").orNull?.toIntOrNull() ?: 1
+        versionName = providers.gradleProperty("reposhelf.versionName").orNull ?: "0.1.0-dev"
 
         // A katalógus helye (docs/ARCHITECTURE.md 7.4., D-021). A repó még nincs publikálva:
         // amíg nem érhető el, az app a beépített (APK-ba csomagolt) katalógussal működik.
@@ -29,6 +31,15 @@ android {
         )
         // Ennél régebbi katalógust a kliens nem fogad el (D-022). Legalább a beépített katalógus sorszáma.
         buildConfigField("long", "MIN_CATALOG_SERIAL", "1L")
+        // Saját frissítés (C. 14., D-062): a saját repó és a release-aláíró elvárt SHA-256 ujjlenyomata(i) build-paraméter
+        // (gradle.properties). Üres ujjlenyomat esetén a futó app saját aláírója az elvárt (a telepített példányhoz
+        // képest ellenőrzünk, ARCH 10.3.). A végleges release-kulcs a 9. munkamenetben (Q-007).
+        val selfRepo = providers.gradleProperty("reposhelf.selfUpdate.repo").orNull ?: ""
+        val selfSigners = providers.gradleProperty("reposhelf.selfUpdate.signerSha256").orNull ?: ""
+        require(selfRepo.isEmpty() || selfRepo.matches(Regex("^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$"))) { "Érvénytelen reposhelf.selfUpdate.repo" }
+        require(selfSigners.isEmpty() || selfSigners.split(',').all { it.matches(Regex("^[0-9a-f]{64}$")) }) { "Érvénytelen reposhelf.selfUpdate.signerSha256" }
+        buildConfigField("String", "SELF_UPDATE_REPO", "\"$selfRepo\"")
+        buildConfigField("String", "SELF_UPDATE_SIGNERS", "\"$selfSigners\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

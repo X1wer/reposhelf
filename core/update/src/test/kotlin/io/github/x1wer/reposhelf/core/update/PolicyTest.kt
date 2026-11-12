@@ -128,6 +128,21 @@ class PolicyTest {
     }
 
     @Test
+    fun unattended_selfUpdate_doesNotNeedToBeTheInstallerOfRecord_butEverythingElseStillHolds() {
+        // A saját frissítés: a rendszer a „saját magát frissítő” telepítőt is elfogadja (C. 14.).
+        val self = "com.example"
+        assertEquals(UnattendedReason.ALLOWED, UnattendedInstallPolicy.evaluate(true, 37, self, InstallSource(null, null), report()))
+        assertEquals(UnattendedReason.ALLOWED, UnattendedInstallPolicy.evaluate(true, 37, self, InstallSource("com.android.shell", "com.other.store"), report()))
+        assertEquals(UnattendedReason.ANDROID_TOO_OLD, UnattendedInstallPolicy.evaluate(true, 30, self, InstallSource(null, null), report()))
+        assertEquals(UnattendedReason.TARGET_SDK_TOO_LOW, UnattendedInstallPolicy.evaluate(true, 37, self, InstallSource(null, null), report(targetSdk = 34)))
+        assertEquals(
+            UnattendedReason.NOT_VERIFIED,
+            UnattendedInstallPolicy.evaluate(true, 37, self, InstallSource(null, null), report(findings = listOf(Finding(FindingKind.SIGNER_MISMATCH_PINNED, Severity.CRITICAL)))),
+            "a saját frissítésnél is minden ellenőrzés kötelező",
+        )
+    }
+
+    @Test
     fun releaseDelay_skipsTooFreshReleases() = runTest {
         val provider = FakeProvider().apply { byName = { fresh(metadata("owner/app", 42, 7)) } }
         val now = Instant.parse("2026-10-10T12:00:00Z")

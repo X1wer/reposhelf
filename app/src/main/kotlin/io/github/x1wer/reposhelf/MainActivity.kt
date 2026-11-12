@@ -25,10 +25,14 @@ import io.github.x1wer.reposhelf.ui.RepoShelfApp
 import io.github.x1wer.reposhelf.ui.theme.RepoShelfTheme
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     /** Értesítésből kért megnyitás: a követett alkalmazás belső azonosítója (validálva). */
     private val openTracked = MutableStateFlow<Long?>(null)
+
+    /** Értesítésből kért megnyitás: a saját frissítés (Beállítások). */
+    private val openSelf = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,7 +41,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             RepoShelfTheme {
                 val request by openTracked.collectAsState()
-                RepoShelfApp(openTrackedRequest = request, onOpenHandled = { openTracked.value = null })
+                val selfRequest by openSelf.collectAsState()
+                RepoShelfApp(
+                    openTrackedRequest = request,
+                    onOpenHandled = { openTracked.value = null },
+                    openSelfUpdateRequest = selfRequest,
+                    onOpenSelfUpdateHandled = { openSelf.value = false },
+                )
             }
         }
         // A PackageInstaller jóváhagyási felületét csak előtérben lévő activity indíthatja (docs/ARCHITECTURE.md 11.1.).
@@ -65,6 +75,7 @@ class MainActivity : ComponentActivity() {
     private fun handleOpenIntent(intent: Intent?) {
         val id = intent?.getLongExtra(Notifier.EXTRA_OPEN_TRACKED, -1L) ?: -1L
         if (id > 0) openTracked.value = id
+        if (intent?.getBooleanExtra(Notifier.EXTRA_OPEN_SELF, false) == true) openSelf.value = true
         // Csak debug buildben: a háttérellenőrzés azonnali futtatása emulátoros teszthez (adb), mert a WorkManager a
         // periodikus munkát az esedékesség előtt nem futtatja. Kiadott buildben ez az ág nem létezik (BuildConfig.DEBUG).
         if (BuildConfig.DEBUG && intent?.getBooleanExtra(EXTRA_DEBUG_RUN_BACKGROUND_CHECK, false) == true) {
@@ -74,9 +85,24 @@ class MainActivity : ComponentActivity() {
                 OneTimeWorkRequestBuilder<UpdateCheckWorker>().build(),
             )
         }
+        // Csak debug buildben: a saját frissítés szimulációja helyi APK-val (B. 6.5.). Csak a saját privát
+        // könyvtárunkban lévő, egyszerű nevű fájl fogadható el (adb run-as-szal kerül oda).
+        val localName = if (BuildConfig.DEBUG) intent?.getStringExtra(EXTRA_DEBUG_SELF_UPDATE_FROM) else null
+        if (localName != null && LOCAL_APK_NAME.matches(localName)) {
+            val dir = File(filesDir, "debug-selfupdate")
+            val file = File(dir, localName)
+            if (file.isFile && file.canonicalFile.parentFile == dir.canonicalFile) {
+                val auto = intent?.getBooleanExtra(EXTRA_DEBUG_SELF_UPDATE_UNATTENDED, false) == true
+                (application as RepoShelfApplication).container.selfUpdater.debugLoadLocal(file, autoInstall = auto)
+                openSelf.value = true
+            }
+        }
     }
 
     private companion object {
         const val EXTRA_DEBUG_RUN_BACKGROUND_CHECK = "io.github.x1wer.reposhelf.debug.RUN_BACKGROUND_CHECK"
+        const val EXTRA_DEBUG_SELF_UPDATE_FROM = "io.github.x1wer.reposhelf.debug.SELF_UPDATE_FROM"
+        const val EXTRA_DEBUG_SELF_UPDATE_UNATTENDED = "io.github.x1wer.reposhelf.debug.SELF_UPDATE_UNATTENDED"
+        val LOCAL_APK_NAME = Regex("^[A-Za-z0-9._-]{1,64}[.]apk$")
     }
 }

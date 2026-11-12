@@ -37,6 +37,8 @@ import io.github.x1wer.reposhelf.ui.apps.MyAppsScreen
 import io.github.x1wer.reposhelf.ui.apps.UpdatesScreen
 import io.github.x1wer.reposhelf.ui.details.DetailsKey
 import io.github.x1wer.reposhelf.ui.details.DetailsScreen
+import io.github.x1wer.reposhelf.ui.history.HistoryScreen
+import io.github.x1wer.reposhelf.ui.settings.SelfUpdatePrompt
 import io.github.x1wer.reposhelf.ui.settings.SettingsScreen
 import io.github.x1wer.reposhelf.ui.sources.SourcesScreen
 import io.github.x1wer.reposhelf.ui.discover.DiscoverScreen
@@ -53,17 +55,34 @@ enum class TopLevelDestination(val route: String, @StringRes val labelRes: Int, 
 private const val DETAILS_ROUTE = "app"
 private const val DETAILS_ARG = "id"
 private const val TRACKED_ROUTE = "tracked"
+private const val HISTORY_ROUTE = "history"
 private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
 
 @Composable
-fun RepoShelfApp(openTrackedRequest: Long? = null, onOpenHandled: () -> Unit = {}) {
+fun RepoShelfApp(
+    openTrackedRequest: Long? = null,
+    onOpenHandled: () -> Unit = {},
+    openSelfUpdateRequest: Boolean = false,
+    onOpenSelfUpdateHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
+    // Értesítésből: a saját frissítés a Beállításokban (C. 14.).
+    LaunchedEffect(openSelfUpdateRequest) {
+        if (!openSelfUpdateRequest) return@LaunchedEffect
+        navController.navigate(TopLevelDestination.SETTINGS.route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+        }
+        onOpenSelfUpdateHandled()
+    }
     // Értesítésből: közvetlenül az érintett alkalmazás adatlapja (C. 13.).
     LaunchedEffect(openTrackedRequest) {
         val id = openTrackedRequest ?: return@LaunchedEffect
         navController.navigate("$TRACKED_ROUTE/$id") { launchSingleTop = true }
         onOpenHandled()
     }
+    // A saját frissítésről szóló semleges kérdés, egyszer (D-062).
+    SelfUpdatePrompt()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
@@ -121,7 +140,10 @@ fun RepoShelfApp(openTrackedRequest: Long? = null, onOpenHandled: () -> Unit = {
                 MyAppsScreen(onOpenApp = openTracked)
             }
             composable(TopLevelDestination.UPDATES.route) {
-                UpdatesScreen(onOpenApp = openTracked)
+                UpdatesScreen(onOpenApp = openTracked, onOpenHistory = { navController.navigate(HISTORY_ROUTE) })
+            }
+            composable(HISTORY_ROUTE) {
+                HistoryScreen(onBack = { navController.popBackStack() })
             }
             composable(TopLevelDestination.SOURCES.route) {
                 SourcesScreen(onOpenTracked = { id -> navController.navigate("$TRACKED_ROUTE/$id") })

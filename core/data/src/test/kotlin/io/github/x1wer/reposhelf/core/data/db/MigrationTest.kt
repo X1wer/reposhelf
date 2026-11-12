@@ -84,7 +84,27 @@ class MigrationTest {
             assertEquals("aa", dao.pin("com.example")?.certsSha256)
             dao.upsertNotification(NotificationLogEntity("update:7", "release:1", 1))
             assertEquals("release:1", dao.notification("update:7")?.stateHash)
-            assertEquals(3, db.openHelper.readableDatabase.version)
+            assertEquals(4, db.openHelper.readableDatabase.version)
+        } finally {
+            db.close()
+            file.delete()
+        }
+    }
+
+    @Test
+    fun version3_migratesTo4_keepingDataAndAddingSafetyTables() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = context.getDatabasePath("migration-test-3.db").apply { parentFile?.mkdirs(); delete() }
+        createVersion(file, 3) { db ->
+            db.execSQL("INSERT INTO signer_pin (packageName, certsSha256, source, pinnedAtMillis, lastVerifiedAtMillis) VALUES ('com.example', 'aa', 'EXISTING_INSTALL', 1, NULL)")
+            db.execSQL("INSERT INTO notification_log (dedupKey, stateHash, postedAtMillis) VALUES ('update:1', 'release:2', 3)")
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, file.path).build()
+        try {
+            assertEquals("aa", db.trackedAppDao().pin("com.example")?.certsSha256)
+            assertEquals("release:2", db.trackedAppDao().notification("update:1")?.stateHash)
+            db.safetyDao().insertHistory(UpdateHistoryEntity(trackedAppId = 1, appName = "A", packageName = "com.example", fromVersionName = "1", fromVersionCode = 1, toVersionName = "2", toVersionCode = 2, atMillis = 5, outcome = "SUCCESS", failureCode = null, failureMessage = null, method = "MANUAL"))
+            assertEquals(4, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -108,7 +128,7 @@ class MigrationTest {
             assertNull(tracked.pin("com.beemdevelopment.aegis"))
             tracked.upsertPin(SignerPinEntity("com.beemdevelopment.aegis", "ab", "FIRST_INSTALL_VIA_US", 1, null))
             assertEquals("ab", tracked.pin("com.beemdevelopment.aegis")?.certsSha256)
-            assertTrue(db.openHelper.readableDatabase.version == 3)
+            assertTrue(db.openHelper.readableDatabase.version == 4)
         } finally {
             db.close()
             file.delete()

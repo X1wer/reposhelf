@@ -9,7 +9,15 @@ import android.net.NetworkCapabilities
 import io.github.x1wer.reposhelf.AppContainer
 import io.github.x1wer.reposhelf.R
 import io.github.x1wer.reposhelf.core.apk.ApkFacts
+import io.github.x1wer.reposhelf.core.data.safety.AppRef
+import io.github.x1wer.reposhelf.core.data.safety.HistoryOutcome
+import io.github.x1wer.reposhelf.core.data.safety.InstallMethod
+import io.github.x1wer.reposhelf.core.data.safety.Version
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedApp
+import io.github.x1wer.reposhelf.core.installer.toSignal
+import io.github.x1wer.reposhelf.core.update.InstallFailureKind
+import io.github.x1wer.reposhelf.core.update.InstallSignal
+import io.github.x1wer.reposhelf.core.update.RepoIdentity
 import io.github.x1wer.reposhelf.core.installer.InstallEvent
 import io.github.x1wer.reposhelf.core.installer.InstallEvents
 import io.github.x1wer.reposhelf.core.installer.InstallTarget
@@ -40,7 +48,17 @@ import java.util.concurrent.ConcurrentHashMap
 data class ReadyUpdate(val releaseId: Long, val release: Release, val assets: List<ReleaseAsset>, val prepared: PreparedInstall.Ready)
 
 /** Egy háttérben indított telepítési munkamenet adatai a 8. lépéshez. */
-private data class BackgroundSession(val app: TrackedApp, val catalogApp: CatalogApp?, val release: Release, val facts: ApkFacts, val prepared: PreparedInstall.Ready)
+private data class BackgroundSession(
+    val app: TrackedApp,
+    val catalogApp: CatalogApp?,
+    val release: Release,
+    val facts: ApkFacts,
+    val prepared: PreparedInstall.Ready,
+    /** A telepítés előtti verzió (előzmények, C. 15.). */
+    val from: Version?,
+    /** A rendszer mégis jóváhagyást kért (a módszer ekkor „automatikus, jóváhagyással”). */
+    val prompted: Boolean = false,
+)
 
 /**
  * A háttérben futó ellenőrzés utáni teendők (C. 12.3–12.5.): értesítés, automatikus letöltés és – ahol az Android
@@ -68,6 +86,8 @@ class BackgroundUpdates(
         securityNotice(app, check)
         val installed = app.packageName?.let { withContext(Dispatchers.IO) { container.installedPackages.get(it) } }
         val policy = container.trackedApps.policyFor(app)
+        // A figyelmeztetések az értesítést és a letöltést nem befolyásolják; az automatikus telepítést a telepítés
+        // pillanatában vizsgáljuk (a letöltött állomány ellenőrzése feloldhatja a kiadáshoz kötött eseteket; C. 20.).
         val plan = BackgroundDecision.plan(check, policy, global, network, installed != null)
         if (plan == BackgroundPlan.NOTHING) return
         val release = check.discovery?.candidate ?: return
@@ -79,13 +99,19 @@ class BackgroundUpdates(
         downloadAndMaybeInstall(app, release, check.compatibility?.chosenAssets.orEmpty(), plan, label)
     }
 
+    /**
+     * Biztonsági értesítés (C. 13., 20.) csak a lényeges, a felhasználó döntését igénylő esetekről, állapotonként
+     * egyszer (a `NotificationLog` deduplikál): azonos néven más repó, elutasított frissítés, tulajdonosváltás, eltűnt repó.
+     */
     private suspend fun securityNotice(app: TrackedApp, check: UpdateCheck) {
-        val text = when (check.status) {
-            UpdateStatus.REPO_ID_CHANGED -> context.getString(R.string.repo_state_id_changed)
-            UpdateStatus.UPDATE_BLOCKED -> context.getString(R.string.upd_blocked)
+        val (text, state) = when {
+            check.status == UpdateStatus.REPO_ID_CHANGED -> context.getString(R.string.repo_state_id_changed) to "id"
+            check.status == UpdateStatus.UPDATE_BLOCKED -> context.getString(R.string.upd_blocked) to "blocked:${app.latest?.releaseId}"
+            check.status == UpdateStatus.REPO_NOT_FOUND -> context.getString(R.string.repo_state_not_found) to "gone"
+            check.discovery?.identity == RepoIdentity.OWNER_CHANGED -> context.getString(R.string.repo_state_owner_changed) to "owner:${check.discovery?.repo?.ownerId}"
             else -> return
         }
-        container.notifier.security(app.id, app.displayName, text, "${check.status}:${app.latest?.releaseId}")
+        container.notifier.security(app.id, app.displayName, text, "${check.status}:$state")
     }
 
     private suspend fun downloadAndMaybeInstall(app: TrackedApp, release: Release, assets: List<ReleaseAsset>, plan: BackgroundPlan, label: String) {
@@ -114,11 +140,19 @@ class BackgroundUpdates(
                 container.trackedApps.recordAnalysis(app.repo, release, assets, prepared.files, prepared.report)
                 container.installCoordinator.cleanup(prepared.files)
                 val kinds = prepared.report.findings.filter { it.severity == Severity.CRITICAL }.joinToString { it.kind.name }
+                val facts = prepared.report.facts
+                container.history.record(
+                    AppRef(app.id, facts?.packageName ?: app.packageName, app.displayName), installedVersion(app),
+                    Version(facts?.versionName ?: release.tagName, facts?.versionCode), HistoryOutcome.BLOCKED, InstallMethod.AUTOMATIC,
+                    kinds.replace(", ", ",").ifEmpty { null },
+                )
                 container.notifier.security(app.id, app.displayName, context.getString(R.string.notif_security_blocked, label), "blocked:${release.id}:$kinds")
             }
             is PreparedInstall.Ready -> {
                 container.trackedApps.recordAnalysis(app.repo, release, assets, prepared.files, prepared.report)
-                if (plan.install && tryUnattended(app, catalogApp, release, prepared, target)) return
+                // Nyugtázatlan figyelmeztetés vagy kritikus eset: nincs automatikus telepítés, csak „telepítésre kész” (C. 20.).
+                val mayInstall = plan.install && !container.warnings.hasBlocking(app.id)
+                if (mayInstall && tryUnattended(app, catalogApp, release, prepared, target)) return
                 readyUpdates[app.id] = ReadyUpdate(release.id, release, assets, prepared)
                 if (plan.notify) container.notifier.readyToInstall(app.id, app.displayName, label, release.id)
             }
@@ -130,12 +164,21 @@ class BackgroundUpdates(
         val verdict = container.installCoordinator.unattendedVerdict(prepared, userEnabled = true, ourPackage = context.packageName)
         if (verdict != UnattendedReason.ALLOWED) return false
         val facts = prepared.report.facts ?: return false
+        val from = installedVersion(app)
         return when (val start = container.installCoordinator.install(prepared, target, unattended = true)) {
             is StepResult.Ok -> {
-                sessions[start.value] = BackgroundSession(app, catalogApp, release, facts, prepared)
+                sessions[start.value] = BackgroundSession(app, catalogApp, release, facts, prepared, from)
                 true
             }
-            else -> false
+            is StepResult.Blocked -> {
+                // A telepítés pillanatában újra ellenőrizve már nem telepíthető (pl. közben megváltozott a telepített példány).
+                container.history.record(
+                    AppRef(app.id, facts.packageName, app.displayName), from, Version(facts.versionName, facts.versionCode),
+                    HistoryOutcome.BLOCKED, InstallMethod.AUTOMATIC, start.findings.joinToString(",") { it.kind.name }.ifEmpty { null },
+                )
+                false
+            }
+            is StepResult.Failed -> false
         }
     }
 
@@ -143,25 +186,46 @@ class BackgroundUpdates(
         val app = session.app
         when (event) {
             // A rendszer mégis jóváhagyást kér: normál működés (C. 12.4.). Előtérben a MainActivity azonnal megmutatja.
-            is InstallEvent.PendingUserAction -> container.notifier.confirmInstall(app.id, app.displayName, event.sessionId)
+            is InstallEvent.PendingUserAction -> {
+                sessions[event.sessionId] = session.copy(prompted = true)
+                container.notifier.confirmInstall(app.id, app.displayName, event.sessionId)
+            }
             is InstallEvent.Success -> {
                 sessions.remove(event.sessionId)
                 when (val outcome = container.installCoordinator.verifyResult(event, session.facts)) {
                     is InstallOutcome.Verified -> {
                         container.trackedApps.recordInstall(app.id, session.catalogApp, app.repo, null, session.release, outcome)
+                        session.record(HistoryOutcome.SUCCESS, Version(outcome.versionName, outcome.versionCode))
                         container.notifier.installed(app.id, app.displayName, outcome.versionName ?: outcome.versionCode.toString())
                     }
-                    else -> container.notifier.failed(app.id, app.displayName, context.getString(R.string.install_success_unverified), "unverified:${event.sessionId}")
+                    else -> {
+                        session.record(HistoryOutcome.FAILED, failureCode = FAILURE_UNVERIFIED)
+                        container.notifier.failed(app.id, app.displayName, context.getString(R.string.install_success_unverified), "unverified:${event.sessionId}")
+                    }
                 }
                 container.installCoordinator.cleanup(session.prepared.files)
             }
             is InstallEvent.Failure -> {
                 sessions.remove(event.sessionId)
                 container.installCoordinator.cleanup(session.prepared.files)
-                container.notifier.failed(app.id, app.displayName, context.getString(R.string.notif_failed_install, event.status), "install:${session.release.id}:${event.status}")
+                val kind = (event.toSignal() as? InstallSignal.Failure)?.kind
+                val cancelled = kind == InstallFailureKind.ABORTED
+                session.record(if (cancelled) HistoryOutcome.CANCELLED_BY_USER else HistoryOutcome.FAILED, failureCode = kind?.name, failureMessage = event.message)
+                if (!cancelled) {
+                    container.notifier.failed(app.id, app.displayName, context.getString(R.string.notif_failed_install, event.status), "install:${session.release.id}:${event.status}")
+                }
             }
         }
     }
+
+    private suspend fun BackgroundSession.record(outcome: HistoryOutcome, to: Version? = null, failureCode: String? = null, failureMessage: String? = null) =
+        container.history.record(
+            AppRef(app.id, facts.packageName, app.displayName), from, to ?: Version(facts.versionName, facts.versionCode), outcome,
+            if (prompted) InstallMethod.AUTOMATIC_PROMPTED else InstallMethod.AUTOMATIC, failureCode, failureMessage,
+        )
+
+    private suspend fun installedVersion(app: TrackedApp): Version? =
+        app.packageName?.let { withContext(Dispatchers.IO) { container.installedPackages.get(it) } }?.let { Version(it.versionName, it.versionCode) }
 
     /**
      * Az elhagyott ideiglenes telepítőfájlok törlése (C. 21.): a kész fájlok 2 nap, a félbemaradt (`.part`) fájlok
@@ -170,7 +234,7 @@ class BackgroundUpdates(
     fun pruneDownloads(dir: File) {
         val now = clock.millis()
         val referenced = readyUpdates.values.flatMap { it.prepared.files.map { f -> f.file.absolutePath } }.toSet() +
-            sessions.values.flatMap { it.prepared.files.map { f -> f.file.absolutePath } }
+            sessions.values.flatMap { it.prepared.files.map { f -> f.file.absolutePath } } + container.selfUpdater.referencedFiles()
         dir.listFiles()?.forEach { file ->
             if (!file.isFile || file.absolutePath in referenced) return@forEach
             val maxAge = if (file.name.endsWith(".part") || file.name.endsWith(".etag")) Duration.ofDays(7) else Duration.ofDays(2)
@@ -179,6 +243,9 @@ class BackgroundUpdates(
     }
 
     companion object {
+        /** A rendszer sikert jelzett, de a telepített csomag nem az, amit ellenőriztünk (8. lépés). */
+        const val FAILURE_UNVERIFIED = "UNVERIFIED"
+
         /** A pillanatnyi hálózat: van-e kapcsolat, és forgalomkorlátos-e (mobiladat). */
         fun networkState(context: Context): NetworkState {
             val cm = context.getSystemService(ConnectivityManager::class.java) ?: return NetworkState(connected = false, metered = true)

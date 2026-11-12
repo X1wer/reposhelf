@@ -20,20 +20,22 @@ import androidx.room.RoomDatabase
  *   Csak új táblák, ezért automatikus migráció.
  * - 3: alkalmazásonkénti felülírások bővítése (letöltés, telepítés, értesítés, késleltetés) és értesítési napló
  *   (5. munkamenet). Új, nullázható oszlopok és új tábla: automatikus migráció.
+ * - 4: biztonsági figyelmeztetések és frissítési előzmények (6. munkamenet). Csak új táblák: automatikus migráció.
  */
 @Database(
     entities = [
         CatalogStateEntity::class, CatalogAppEntity::class, CatalogAppFts::class,
         TrackedAppEntity::class, AppSettingsOverrideEntity::class, SignerPinEntity::class, ApkAnalysisEntity::class,
-        NotificationLogEntity::class,
+        NotificationLogEntity::class, SecurityWarningEntity::class, UpdateHistoryEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao
     abstract fun trackedAppDao(): TrackedAppDao
+    abstract fun safetyDao(): SafetyDao
 
     companion object {
         const val NAME = "reposhelf.db"

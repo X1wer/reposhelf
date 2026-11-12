@@ -243,6 +243,28 @@ class TrackedAppsRepositoryTest {
     }
 
     @Test
+    fun checks_recordAndResolveSecurityWarnings(): Unit = runBlocking {
+        val store = io.github.x1wer.reposhelf.core.data.safety.SecurityWarnings(db, clock)
+        val repo = TrackedAppsRepository(db, ProviderRegistry(listOf(provider)), { installedApps[it] }, { device }, budget, clock, warnings = store)
+        publish("owner/app", 42, release(10, "v1.0", asset(1)))
+        val id = repo.follow(assertIs(repo.preview("owner/app")))
+        // A repó eltűnik: figyelmeztetés.
+        provider.repos.clear()
+        assertEquals(UpdateStatus.REPO_NOT_FOUND, repo.checkOne(id)?.status)
+        assertEquals(io.github.x1wer.reposhelf.core.update.WarningCategory.REPO_GONE, store.observeOpen().first().single().category)
+        // Újra elérhető: a figyelmeztetés feloldva.
+        publish("owner/app", 42, release(10, "v1.0", asset(1)))
+        repo.checkOne(id)
+        assertTrue(store.observeOpen().first().isEmpty())
+        // Azonos néven más repó: kritikus.
+        provider.repos[ref("owner/app").key] = repo("owner/app", 999)
+        repo.checkOne(id)
+        val critical = store.observeOpen().first().single()
+        assertEquals(io.github.x1wer.reposhelf.core.model.Severity.CRITICAL, critical.severity)
+        assertTrue(store.hasBlocking(id))
+    }
+
+    @Test
     fun recordInstall_pinsOnFirstInstall_andMergesRotation(): Unit = runBlocking {
         publish("owner/app", 42, release(10, "v1.0", asset(1)))
         val id = repository.follow(assertIs(repository.preview("owner/app")))

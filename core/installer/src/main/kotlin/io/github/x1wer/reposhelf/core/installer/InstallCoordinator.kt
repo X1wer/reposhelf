@@ -73,6 +73,12 @@ class InstallCoordinator(
         return verify(files, target)
     }
 
+    /**
+     * 5–6. lépés már a készüléken lévő állományokra. Csak a debug build helyi saját frissítés-szimulációja használja
+     * (emulátoros teszt hálózat nélkül); ugyanaz az ellenőrzés fut, mint letöltés után.
+     */
+    suspend fun verifyLocal(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall = verify(files, target)
+
     private suspend fun verify(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall {
         val device = installed.deviceProfile()
         val integrity = withContext(Dispatchers.IO) { verifier.checkIntegrity(files) }

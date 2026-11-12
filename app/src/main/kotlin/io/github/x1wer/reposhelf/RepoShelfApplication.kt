@@ -24,6 +24,8 @@ class RepoShelfApplication : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         container = AppContainer(this)
         container.notifier.createChannels()
+        // A megszakadt telepítések rendezése és a függő saját frissítés egyeztetése (C. 14.).
+        container.selfUpdater.onProcessStart()
         // Ütemezés a beállítások szerint; idempotens, minden indításkor és minden változáskor (ARCH 12.).
         container.appScope.launch {
             container.settings.settings

@@ -17,7 +17,17 @@ import io.github.x1wer.reposhelf.core.apk.PreliminaryCompatibility
 import io.github.x1wer.reposhelf.core.apk.ReleaseResolver
 import io.github.x1wer.reposhelf.core.apk.ResolvedReleases
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
+import io.github.x1wer.reposhelf.background.BackgroundUpdates
+import io.github.x1wer.reposhelf.core.apk.ApkFacts
 import io.github.x1wer.reposhelf.core.data.details.DetailsError
+import io.github.x1wer.reposhelf.core.data.safety.AppRef
+import io.github.x1wer.reposhelf.core.data.safety.HistoryOutcome
+import io.github.x1wer.reposhelf.core.data.safety.InstallMethod
+import io.github.x1wer.reposhelf.core.data.safety.Version
+import io.github.x1wer.reposhelf.core.installer.toSignal
+import io.github.x1wer.reposhelf.core.model.Severity
+import io.github.x1wer.reposhelf.core.update.InstallFailureKind
+import io.github.x1wer.reposhelf.core.update.InstallSignal
 import io.github.x1wer.reposhelf.core.data.tracked.RepoState
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedApp
 import io.github.x1wer.reposhelf.core.installer.InstallEvent
@@ -39,8 +49,15 @@ import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import io.github.x1wer.reposhelf.core.update.InstallOutcome
 import io.github.x1wer.reposhelf.core.update.StepResult
 import io.github.x1wer.reposhelf.core.update.UpdateFailure
+import io.github.x1wer.reposhelf.core.data.safety.SecurityWarning
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -113,6 +130,23 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
     /** A megjelenített ellenőrzött frissítés a háttérben készült (fájljai a háttérfeladathoz tartoznak, nem töröljük). */
     private var verifiedFromBackground = false
 
+    /** Az előzményekhez (C. 15.): a telepítés előtti verzió és a módszer, a telepítés indításakor rögzítve. */
+    private var historyFrom: Version? = null
+    private var historyMethod = InstallMethod.MANUAL
+
+    private val trackedId = MutableStateFlow<Long?>(null)
+
+    /** Az alkalmazás fennálló figyelmeztetései (C. 20.); az INFO-szintű jelzéseket az adatlap a helyükön mutatja. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val warnings: StateFlow<List<SecurityWarning>> = trackedId
+        .flatMapLatest { id -> id?.let { container.warnings.observeForApp(it) } ?: flowOf(emptyList()) }
+        .map { list -> list.filter { it.severity >= Severity.WARNING } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun acknowledgeWarning(id: Long) {
+        viewModelScope.launch { container.warnings.acknowledge(id) }
+    }
+
     /** A globális beállítások (az alkalmazásonkénti szabályok „alapértelmezett” értékéhez). */
     val globalSettings: StateFlow<GlobalSettings> = container.settingsState
 
@@ -175,6 +209,7 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
 
     /** A követett sor változásainak figyelése (követés, kedvenc, repó-állapot). */
     private fun observeTracked(id: Long?) {
+        trackedId.value = id
         trackedJob?.cancel()
         if (id == null) return
         trackedJob = viewModelScope.launch {
@@ -336,8 +371,10 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
                 is PreparedInstall.Blocked -> {
                     container.trackedApps.recordAnalysis(subject.repo, release, assets, prepared.files, prepared.report)
                     container.installCoordinator.cleanup(prepared.files)
+                    recordHistory(HistoryOutcome.BLOCKED, prepared.report.facts, method = InstallMethod.MANUAL, failureCode = prepared.report.criticalCodes())
                 }
-                is PreparedInstall.DownloadFailed -> Unit
+                is PreparedInstall.DownloadFailed ->
+                    recordHistory(HistoryOutcome.FAILED, null, method = InstallMethod.MANUAL, failureCode = "DOWNLOAD_${prepared.reason.name}", failureMessage = prepared.detail)
             }
             // Ha a csomagnév eddig nem volt ismert, a vizsgált APK-ból megtanuljuk (a telepített verzió így látszik).
             val learned = when (prepared) {
@@ -366,6 +403,8 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         val verified = _state.value.install as? InstallUiState.Verified ?: return
         val target = target() ?: return
         viewModelScope.launch {
+            historyFrom = _state.value.installed?.let { Version(it.versionName, it.versionCode) }
+            historyMethod = if (_state.value.readyFromBackground) InstallMethod.AUTOMATIC_PROMPTED else InstallMethod.MANUAL
             _state.update { it.copy(install = InstallUiState.Installing(verified.prepared.report, waitingForUser = false)) }
             committedFiles = verified.prepared.files
             _state.value.tracked?.id?.let { container.backgroundUpdates.readyUpdates.remove(it) }
@@ -374,10 +413,14 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
                 is StepResult.Ok -> sessionId = start.value
                 is StepResult.Blocked -> {
                     finishSession()
+                    recordHistory(HistoryOutcome.BLOCKED, verified.prepared.report.facts, failureCode = start.findings.joinToString(",") { it.kind.name }.ifEmpty { null })
                     _state.update { it.copy(install = InstallUiState.Blocked(verified.prepared.report.copy(findings = verified.prepared.report.findings + start.findings))) }
                 }
                 is StepResult.Failed -> {
                     finishSession()
+                    (start.failure as? UpdateFailure.InstallStartFailed)?.let { failure ->
+                        recordHistory(HistoryOutcome.FAILED, verified.prepared.report.facts, failureCode = "INSTALL_START_FAILED", failureMessage = failure.reason)
+                    }
                     _state.update {
                         it.copy(
                             install = when (val failure = start.failure) {
@@ -404,13 +447,24 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
                 val outcome = facts?.let { container.installCoordinator.verifyResult(event, it) }
                 val packageName = event.packageName ?: facts?.packageName.orEmpty()
                 val actual = withContext(Dispatchers.IO) { container.installedPackages.get(packageName) }
-                if (outcome is InstallOutcome.Verified) recordInstall(outcome)
+                if (outcome is InstallOutcome.Verified) {
+                    val id = recordInstall(outcome)
+                    recordHistory(HistoryOutcome.SUCCESS, facts, trackedId = id, to = Version(outcome.versionName, outcome.versionCode))
+                } else {
+                    recordHistory(HistoryOutcome.FAILED, facts, failureCode = BackgroundUpdates.FAILURE_UNVERIFIED)
+                }
                 finishSession()
                 _state.update {
                     it.copy(installed = actual ?: it.installed, install = InstallUiState.Succeeded(packageName, actual?.versionName, outcome is InstallOutcome.Verified))
                 }
             }
             is InstallEvent.Failure -> {
+                val facts = installing?.report?.facts
+                viewModelScope.launch {
+                    val kind = (event.toSignal() as? InstallSignal.Failure)?.kind
+                    val outcome = if (kind == InstallFailureKind.ABORTED) HistoryOutcome.CANCELLED_BY_USER else HistoryOutcome.FAILED
+                    recordHistory(outcome, facts, failureCode = kind?.name, failureMessage = event.message)
+                }
                 finishSession()
                 _state.update { it.copy(install = InstallUiState.Failed(event.status, event.message, event.developerVerificationReason, event.explanationIntent)) }
             }
@@ -418,13 +472,37 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
     }
 
     /** Sikeres, ellenőrzött telepítés: követés, és az aláíró rögzítése (első telepítéskor TOFU; C. 19.). */
-    private suspend fun recordInstall(outcome: InstallOutcome.Verified) {
+    private suspend fun recordInstall(outcome: InstallOutcome.Verified): Long? {
         val state = _state.value
-        val subject = state.subject ?: return
-        val release = state.release ?: return
+        val subject = state.subject ?: return null
+        val release = state.release ?: return null
         val id = container.trackedApps.recordInstall(state.tracked?.id, subject.catalogApp, subject.repo, state.repo, release, outcome)
         if (state.tracked == null) observeTracked(id)
+        return id
     }
+
+    /** Előzmény-bejegyzés (C. 15.): név, korábbi és új verzió, eredmény, ok, módszer. Érzékeny adat nélkül. */
+    private suspend fun recordHistory(
+        outcome: HistoryOutcome,
+        facts: ApkFacts?,
+        trackedId: Long? = null,
+        to: Version? = null,
+        method: InstallMethod = historyMethod,
+        failureCode: String? = null,
+        failureMessage: String? = null,
+    ) {
+        val state = _state.value
+        val subject = state.subject ?: return
+        container.history.record(
+            AppRef(trackedId ?: state.tracked?.id, facts?.packageName ?: subject.packageName, subject.name),
+            if (method == historyMethod && historyFrom != null) historyFrom else state.installed?.let { Version(it.versionName, it.versionCode) },
+            to ?: facts?.let { Version(it.versionName, it.versionCode) } ?: state.release?.let { Version(it.tagName, null) },
+            outcome, method, failureCode, failureMessage,
+        )
+    }
+
+    private fun VerificationReport.criticalCodes(): String? =
+        findings.filter { it.severity == Severity.CRITICAL }.joinToString(",") { it.kind.name }.ifEmpty { null }
 
     /** A session lezárása: a letöltött fájlok a telepítés után feleslegesek (C. 21.: ideiglenes APK-fájlok kezelése). */
     private fun finishSession() {

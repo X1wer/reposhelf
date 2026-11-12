@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<resources>
+    <!-- Biztonsági figyelmeztetések -->
+    <string name="warnings_title">Biztonsági figyelmeztetések</string>
+    <string name="warn_cat_repo_gone">A repó eltűnt vagy nem érhető el</string>
+    <string name="warn_cat_repo_id_changed">Azonos néven egy másik repó található</string>
+    <string name="warn_cat_owner_changed">Megváltozott a repó tulajdonosa</string>
+    <string name="warn_cat_signer_changed">Megváltozott az aláíró kulcs</string>
+    <string name="warn_cat_package_changed">A frissítés más csomagazonosítót tartalmaz</string>
+    <string name="warn_cat_downgrade">A frissítés verziókódja régebbi, mint a telepítetté</string>
+    <string name="warn_cat_corrupted">A letöltött állomány sérült vagy érvénytelen</string>
+    <string name="warn_cat_incompatible">Nem kompatibilis ezzel az eszközzel</string>
+    <string name="warn_cat_unexpected_format">Egy kiadási állomány nem a várt formátumú</string>
+    <string name="warn_cat_unverifiable">A forrás hitelessége nem ellenőrizhető</string>
+    <string name="warn_severity_critical">Kritikus</string>
+    <string name="warn_severity_warning">Figyelmeztetés</string>
+    <string name="warn_severity_info">Tájékoztatás</string>
+    <string name="warn_effect_critical">Az automatikus telepítés tiltva.</string>
+    <string name="warn_effect_warning">Az automatikus telepítés szünetel, amíg nem nyugtázod.</string>
+    <string name="warn_acknowledge">Tudomásul vettem</string>
+    <string name="warn_acknowledged">Nyugtázva</string>
+    <string name="warn_seen">Utoljára észlelve: %1$s</string>
+    <string name="warn_open">Megnyitás</string>
+
+    <!-- Frissítési előzmények -->
+    <string name="history_title">Frissítési előzmények</string>
+    <string name="history_open">Előzmények</string>
+    <string name="history_search">Keresés alkalmazásnévre</string>
+    <string name="history_empty">Még nincs rögzített frissítés.</string>
+    <string name="history_filter_empty">Nincs a szűrésnek megfelelő bejegyzés.</string>
+    <string name="history_filter_all">Mind</string>
+    <string name="history_filter_success">Sikeres</string>
+    <string name="history_filter_failed">Sikertelen</string>
+    <string name="history_filter_cancelled">Megszakítva</string>
+    <string name="history_filter_blocked">Letiltva</string>
+    <string name="history_filter_automatic">Automatikus</string>
+    <string name="history_outcome_success">Sikeres</string>
+    <string name="history_outcome_failed">Sikertelen</string>
+    <string name="history_outcome_cancelled">Megszakítva</string>
+    <string name="history_outcome_blocked">Letiltva</string>
+    <string name="history_method_manual">Kézi</string>
+    <string name="history_method_automatic">Automatikus</string>
+    <string name="history_method_prompted">Automatikus, jóváhagyással</string>
+    <string name="history_method_self">A RepoShelf saját frissítése</string>
+    <string name="history_new_install">új telepítés</string>
+    <string name="history_versions">%1$s → %2$s</string>
+    <string name="history_reason">Ok: %1$s</string>
+    <string name="history_reason_interrupted">a frissítés megszakadt (például bezárult az alkalmazás)</string>
+    <string name="history_reason_unverified">települt, de az eredmény nem volt ellenőrizhető</string>
+    <string name="history_reason_conflict">ütközik a telepített alkalmazással</string>
+    <string name="history_reason_storage">nincs elég tárhely</string>
+    <string name="history_reason_incompatible">nem kompatibilis ezzel az eszközzel</string>
+    <string name="history_reason_invalid">érvénytelen csomag</string>
+    <string name="history_reason_system_blocked">a rendszer letiltotta</string>
+    <string name="history_reason_developer_verification">Android-fejlesztőellenőrzés</string>
+    <string name="history_reason_download">sikertelen letöltés</string>
+    <string name="history_reason_start">a telepítés nem indult el</string>
+
+    <!-- A RepoShelf saját frissítése -->
+    <string name="self_section">A RepoShelf frissítése</string>
+    <string name="self_current">Telepített verzió: %1$s</string>
+    <string name="self_disabled">Ebben a változatban nincs saját frissítés.</string>
+    <string name="self_source">Forrás: github.com/%1$s</string>
+    <string name="self_auto_check">A RepoShelf frissítéseinek automatikus keresése</string>
+    <string name="self_auto_note">A háttérellenőrzéssel együtt fut. A letöltés és a telepítés a fenti automatikus beállításokat követi, ugyanazokkal az ellenőrzésekkel, mint a többi alkalmazásnál; az aláíró kulcsnak egyeznie kell a telepített RepoShelfével.</string>
+    <string name="self_check_now">Keresés most</string>
+    <string name="self_state_idle">Ebben a munkamenetben még nem volt ellenőrzés.</string>
+    <string name="self_state_checking">Ellenőrzés…</string>
+    <string name="self_state_up_to_date">A RepoShelf naprakész (ellenőrizve: %1$s).</string>
+    <string name="self_state_available">Új verzió érhető el: %1$s</string>
+    <string name="self_state_needs_permission">A saját frissítéshez engedélyezd, hogy a RepoShelf alkalmazásokat telepíthessen.</string>
+    <string name="self_state_downloading">Letöltés… %1$s / %2$s</string>
+    <string name="self_state_verifying">Ellenőrzés…</string>
+    <string name="self_state_ready">A(z) %1$s verzió letöltve és ellenőrizve.</string>
+    <string name="self_state_installing">A(z) %1$s telepítése… a RepoShelf újraindul.</string>
+    <string name="self_state_waiting">A(z) %1$s telepítése… jóváhagyásra vár.</string>
+    <string name="self_state_blocked">A biztonsági ellenőrzés letiltotta a frissítést: %1$s</string>
+    <string name="self_state_check_failed">Az ellenőrzés nem sikerült: %1$s</string>
+    <string name="self_state_download_failed">A letöltés nem sikerült. Próbáld újra később.</string>
+    <string name="self_state_install_failed">A telepítés nem sikerült: %1$s</string>
+    <string name="self_state_cancelled">A telepítés megszakítva.</string>
+    <string name="self_state_interrupted">A legutóbbi saját frissítés (%1$s) nem fejeződött be. Újra elindíthatod.</string>
+    <string name="self_download">Letöltés és ellenőrzés</string>
+    <string name="self_install">Telepítés</string>
+    <string name="self_allow">Telepítés engedélyezése</string>
+    <string name="self_reason_unknown">ismeretlen ok</string>
+    <string name="self_reason_rate_limited">elfogyott a GitHub-kérések kerete</string>
+    <string name="self_reason_not_found">a repó nem található</string>
+    <string name="self_reason_no_release">nincs telepíthető kiadás</string>
+    <string name="self_reason_incompatible">nem kompatibilis ezzel az eszközzel</string>
+    <string name="self_reason_network">hálózati hiba</string>
+
+    <!-- Semleges opt-in kérdés (D-062) -->
+    <string name="self_prompt_title">A RepoShelf saját frissítései</string>
+    <string name="self_prompt_text">A RepoShelf a saját GitHub-repójában (%1$s) is kereshet új verziót, és értesíthet róla. Ehhez ugyanúgy a GitHub API-t használja, mint a többi alkalmazásnál. A letöltés és a telepítés a beállításaidat és ugyanazokat a biztonsági ellenőrzéseket követi. Később a Beállításokban módosíthatod.</string>
+    <string name="self_prompt_yes">Keressen frissítést</string>
+    <string name="self_prompt_no">Ne keressen</string>
+
+    <!-- Értesítések -->
+    <string name="notif_self_available_title">Új RepoShelf-verzió érhető el</string>
+    <string name="notif_self_ready_title">A RepoShelf frissítése telepítésre kész</string>
+    <string name="notif_self_confirm_title">Hagyd jóvá a RepoShelf frissítését (%1$s)</string>
+    <string name="notif_self_installed_title">A RepoShelf frissült</string>
+</resources>

@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -112,18 +113,45 @@ private fun AppFilter.labelRes(): Int = when (this) {
 /** „Frissítések” (C. 11., 12.1.): a frissíthető és a figyelmet igénylő alkalmazások, kézi ellenőrzéssel. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UpdatesScreen(onOpenApp: (TrackedApp) -> Unit, viewModel: TrackedListViewModel = viewModel(factory = TrackedListViewModel.Factory)) {
+fun UpdatesScreen(onOpenApp: (TrackedApp) -> Unit, onOpenHistory: () -> Unit = {}, viewModel: TrackedListViewModel = viewModel(factory = TrackedListViewModel.Factory)) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val icons by viewModel.icons.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResume() }
     val attention = state.rows.filter { it.needsAttention }
     val followed = state.rows.count { it.app.isFollowed }
     val notificationsAllowed by viewModel.notificationsAllowed.collectAsStateWithLifecycle()
+    val warnings by viewModel.warnings.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.nav_updates)) }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.nav_updates)) },
+                actions = { androidx.compose.material3.TextButton(onClick = onOpenHistory) { Text(stringResource(R.string.history_open)) } },
+            )
+        },
+    ) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize()) {
             item { CheckAllPanel(state, viewModel::checkAll) }
+            // Biztonsági figyelmeztetések (C. 20.): az értesítésektől függetlenül itt is látszanak (C. 13.).
+            if (warnings.isNotEmpty()) {
+                item {
+                    Text(
+                        stringResource(R.string.warnings_title),
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp).semantics { heading() },
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+                items(warnings, key = { "w${it.id}" }) { warning ->
+                    val app = warning.trackedAppId?.let { id -> state.rows.firstOrNull { it.app.id == id }?.app }
+                    io.github.x1wer.reposhelf.ui.safety.WarningCard(
+                        warning, showAppName = true,
+                        onAcknowledge = { viewModel.acknowledgeWarning(warning.id) },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        onOpen = app?.let { { onOpenApp(it) } },
+                    )
+                }
+            }
             if (!notificationsAllowed && followed > 0) {
                 item {
                     // A biztonsági figyelmeztetések és a frissítések tiltott értesítések mellett is látszanak (C. 13.).
@@ -140,7 +168,7 @@ fun UpdatesScreen(onOpenApp: (TrackedApp) -> Unit, viewModel: TrackedListViewMod
                     when {
                         !state.loaded -> Unit
                         followed == 0 -> Text(stringResource(R.string.updates_none_followed))
-                        attention.isEmpty() -> Text(stringResource(R.string.updates_empty))
+                        attention.isEmpty() && warnings.isEmpty() -> Text(stringResource(R.string.updates_empty))
                     }
                     if (followed > 0) Text(stringResource(R.string.updates_up_to_date_count, followed - attention.size), style = MaterialTheme.typography.bodySmall)
                 }

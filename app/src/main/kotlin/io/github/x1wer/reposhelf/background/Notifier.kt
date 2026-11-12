@@ -105,10 +105,52 @@ class Notifier(private val context: Context, private val log: NotificationLog) {
             setContentTitle(context.getString(R.string.notif_catalog_title)).setContentText(context.resources.getQuantityString(R.plurals.notif_catalog_text, appCount, appCount))
         }
 
+    // ---- A RepoShelf saját frissítése (C. 14.); megnyitáskor a Beállítások saját frissítés része ----
+
+    suspend fun selfUpdateAvailable(version: String, releaseId: Long) =
+        post(CH_SELF_UPDATE, SELF_KEY, "available:$releaseId", null, ID_SELF, openSelf = true) {
+            setContentTitle(context.getString(R.string.notif_self_available_title)).setContentText(context.getString(R.string.notif_update_text, version))
+        }
+
+    suspend fun selfUpdateReady(version: String, releaseId: Long) =
+        post(CH_SELF_UPDATE, SELF_KEY, "ready:$releaseId", null, ID_SELF, openSelf = true) {
+            setContentTitle(context.getString(R.string.notif_self_ready_title)).setContentText(context.getString(R.string.notif_ready_text, version))
+        }
+
+    suspend fun selfUpdateConfirm(version: String, sessionId: Int) =
+        post(CH_SELF_UPDATE, SELF_KEY, "confirm:$sessionId", null, ID_SELF, openSelf = true) {
+            setContentTitle(context.getString(R.string.notif_self_confirm_title, version)).setContentText(context.getString(R.string.notif_confirm_text))
+        }
+
+    suspend fun selfUpdated(version: String) =
+        post(CH_SELF_UPDATE, SELF_KEY, "installed:$version", null, ID_SELF, openSelf = true) {
+            setContentTitle(context.getString(R.string.notif_self_installed_title)).setContentText(context.getString(R.string.notif_installed_text, version))
+        }
+
+    suspend fun selfUpdateFailed(reason: String, stateKey: String) =
+        post(CH_FAILURES, "self:failed", stateKey, null, ID_SELF_FAILED, openSelf = true) {
+            setContentTitle(context.getString(R.string.notif_failed_title, SELF_NAME)).setContentText(reason)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(reason))
+        }
+
+    suspend fun selfUpdateBlocked(text: String, stateKey: String) =
+        post(CH_SECURITY, "self:security", stateKey, null, ID_SELF_SECURITY, openSelf = true) {
+            setContentTitle(context.getString(R.string.notif_security_title, SELF_NAME)).setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        }
+
     private fun cancel(trackedId: Long, id: Int) = manager.cancel(trackedId.toString(), id)
 
     @SuppressLint("MissingPermission") // a canPost ellenőrzi a POST_NOTIFICATIONS engedélyt
-    private suspend fun post(channel: String, key: String, state: String, trackedId: Long?, id: Int, content: NotificationCompat.Builder.() -> NotificationCompat.Builder) {
+    private suspend fun post(
+        channel: String,
+        key: String,
+        state: String,
+        trackedId: Long?,
+        id: Int,
+        openSelf: Boolean = false,
+        content: NotificationCompat.Builder.() -> NotificationCompat.Builder,
+    ) {
         if (!canPost(channel)) return
         if (!log.claim(key, state)) return
         val notification = NotificationCompat.Builder(context, channel)
@@ -116,17 +158,19 @@ class Notifier(private val context: Context, private val log: NotificationLog) {
             .setSmallIcon(R.drawable.ic_notification)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
-            .setContentIntent(openIntent(trackedId))
+            .setContentIntent(openIntent(trackedId, openSelf))
             .build()
         manager.notify(trackedId?.toString() ?: key, id, notification)
     }
 
     /** Az értesítés a saját activitynket nyitja meg, a követett alkalmazás belső azonosítójával (validálva fogadjuk). */
-    private fun openIntent(trackedId: Long?): PendingIntent {
+    private fun openIntent(trackedId: Long?, openSelf: Boolean): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         trackedId?.let { intent.putExtra(EXTRA_OPEN_TRACKED, it) }
-        return PendingIntent.getActivity(context, (trackedId ?: 0L).toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        if (openSelf) intent.putExtra(EXTRA_OPEN_SELF, true)
+        val requestCode = if (openSelf) REQUEST_SELF else (trackedId ?: 0L).toInt()
+        return PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
     /** A rendszer értesítési beállításai ehhez az apphoz (a felhasználó itt kapcsolhatja ki/be a csatornákat). */
@@ -143,11 +187,19 @@ class Notifier(private val context: Context, private val log: NotificationLog) {
         const val CH_PROGRESS = "progress"
 
         const val EXTRA_OPEN_TRACKED = "io.github.x1wer.reposhelf.extra.OPEN_TRACKED"
+        const val EXTRA_OPEN_SELF = "io.github.x1wer.reposhelf.extra.OPEN_SELF"
+
+        private const val SELF_KEY = "self:update"
+        private const val SELF_NAME = "RepoShelf"
+        private const val REQUEST_SELF = -2
 
         private const val ID_UPDATE = 1
         private const val ID_INSTALLED = 2
         private const val ID_FAILED = 3
         private const val ID_SECURITY = 4
         private const val ID_CATALOG = 5
+        private const val ID_SELF = 6
+        private const val ID_SELF_FAILED = 7
+        private const val ID_SELF_SECURITY = 8
     }
 }

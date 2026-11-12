@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -102,6 +103,7 @@ fun DetailsScreen(key: DetailsKey, onBack: () -> Unit) {
 @Composable
 private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
+    val warnings by vm.warnings.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -127,6 +129,10 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
             item { Info(state) }
             item { TrackingRow(state, vm) }
             item { RepoStateNotice(state, vm) }
+            // Biztonsági figyelmeztetések (C. 20.) nyugtázással; a kritikus eset nyugtázás után is tiltja az automatikus telepítést.
+            items(warnings, key = { "warning-${it.id}" }) { warning ->
+                io.github.x1wer.reposhelf.ui.safety.WarningCard(warning, showAppName = false, onAcknowledge = { vm.acknowledgeWarning(warning.id) })
+            }
             item { RulesSection(state, vm) }
             item { ReleaseInfo(state, vm) }
             item { InstallSection(state, vm) }

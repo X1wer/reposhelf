@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors
+     SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Security warnings (C. 20.), update history (C. 15.) and RepoShelf self-update (C. 14.). -->
+<resources>
+    <!-- Security warnings -->
+    <string name="warnings_title">Security warnings</string>
+    <string name="warn_cat_repo_gone">The repository disappeared or is unavailable</string>
+    <string name="warn_cat_repo_id_changed">A different repository exists under the same name</string>
+    <string name="warn_cat_owner_changed">The repository owner changed</string>
+    <string name="warn_cat_signer_changed">The signing key changed</string>
+    <string name="warn_cat_package_changed">The update has a different package name</string>
+    <string name="warn_cat_downgrade">The update has an older version code than the installed app</string>
+    <string name="warn_cat_corrupted">The downloaded file is corrupted or invalid</string>
+    <string name="warn_cat_incompatible">Not compatible with this device</string>
+    <string name="warn_cat_unexpected_format">A release file is in an unexpected format</string>
+    <string name="warn_cat_unverifiable">The authenticity of the source cannot be verified</string>
+    <string name="warn_severity_critical">Critical</string>
+    <string name="warn_severity_warning">Warning</string>
+    <string name="warn_severity_info">Info</string>
+    <string name="warn_effect_critical">Automatic installation is blocked.</string>
+    <string name="warn_effect_warning">Automatic installation is paused until you acknowledge this.</string>
+    <string name="warn_acknowledge">Acknowledge</string>
+    <string name="warn_acknowledged">Acknowledged</string>
+    <string name="warn_seen">Last seen: %1$s</string>
+    <string name="warn_open">Open</string>
+
+    <!-- Update history -->
+    <string name="history_title">Update history</string>
+    <string name="history_open">History</string>
+    <string name="history_search">Search by app name</string>
+    <string name="history_empty">No updates recorded yet.</string>
+    <string name="history_filter_empty">No entries match the filter.</string>
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_success">Successful</string>
+    <string name="history_filter_failed">Failed</string>
+    <string name="history_filter_cancelled">Cancelled</string>
+    <string name="history_filter_blocked">Blocked</string>
+    <string name="history_filter_automatic">Automatic</string>
+    <string name="history_outcome_success">Successful</string>
+    <string name="history_outcome_failed">Failed</string>
+    <string name="history_outcome_cancelled">Cancelled</string>
+    <string name="history_outcome_blocked">Blocked</string>
+    <string name="history_method_manual">Manual</string>
+    <string name="history_method_automatic">Automatic</string>
+    <string name="history_method_prompted">Automatic, confirmed by you</string>
+    <string name="history_method_self">RepoShelf self-update</string>
+    <string name="history_new_install">new install</string>
+    <string name="history_versions">%1$s → %2$s</string>
+    <string name="history_reason">Reason: %1$s</string>
+    <string name="history_reason_interrupted">the update was interrupted (for example the app was closed)</string>
+    <string name="history_reason_unverified">installed, but the result could not be verified</string>
+    <string name="history_reason_conflict">conflicts with the installed app</string>
+    <string name="history_reason_storage">not enough storage</string>
+    <string name="history_reason_incompatible">not compatible with this device</string>
+    <string name="history_reason_invalid">invalid package</string>
+    <string name="history_reason_system_blocked">blocked by the system</string>
+    <string name="history_reason_developer_verification">Android developer verification</string>
+    <string name="history_reason_download">download failed</string>
+    <string name="history_reason_start">the installation could not be started</string>
+
+    <!-- RepoShelf self-update -->
+    <string name="self_section">RepoShelf updates</string>
+    <string name="self_current">Installed version: %1$s</string>
+    <string name="self_disabled">Self-update is not available in this build.</string>
+    <string name="self_source">Source: github.com/%1$s</string>
+    <string name="self_auto_check">Check for RepoShelf updates automatically</string>
+    <string name="self_auto_note">Runs together with the background check. Downloading and installing follow the automatic settings above, with the same checks as for other apps; the signing key must match the installed RepoShelf.</string>
+    <string name="self_check_now">Check now</string>
+    <string name="self_state_idle">Not checked yet in this session.</string>
+    <string name="self_state_checking">Checking…</string>
+    <string name="self_state_up_to_date">RepoShelf is up to date (checked %1$s).</string>
+    <string name="self_state_available">New version available: %1$s</string>
+    <string name="self_state_needs_permission">Allow RepoShelf to install apps to update itself.</string>
+    <string name="self_state_downloading">Downloading… %1$s / %2$s</string>
+    <string name="self_state_verifying">Verifying…</string>
+    <string name="self_state_ready">Version %1$s is downloaded and verified.</string>
+    <string name="self_state_installing">Installing %1$s… RepoShelf will restart.</string>
+    <string name="self_state_waiting">Installing %1$s… waiting for your confirmation.</string>
+    <string name="self_state_blocked">The update was blocked by the security checks: %1$s</string>
+    <string name="self_state_check_failed">The check failed: %1$s</string>
+    <string name="self_state_download_failed">The download failed. Try again later.</string>
+    <string name="self_state_install_failed">The installation failed: %1$s</string>
+    <string name="self_state_cancelled">The installation was cancelled.</string>
+    <string name="self_state_interrupted">The last self-update (%1$s) did not finish. You can start it again.</string>
+    <string name="self_download">Download and verify</string>
+    <string name="self_install">Install</string>
+    <string name="self_allow">Allow installing</string>
+    <string name="self_reason_unknown">unknown reason</string>
+    <string name="self_reason_rate_limited">GitHub request limit reached</string>
+    <string name="self_reason_not_found">the repository was not found</string>
+    <string name="self_reason_no_release">no installable release</string>
+    <string name="self_reason_incompatible">not compatible with this device</string>
+    <string name="self_reason_network">network error</string>
+
+    <!-- Neutral opt-in question (D-062) -->
+    <string name="self_prompt_title">Updates for RepoShelf itself</string>
+    <string name="self_prompt_text">RepoShelf can check its own GitHub repository (%1$s) for new versions and notify you. It uses the GitHub API the same way as for other apps. Downloading and installing follow your settings and the same security checks. You can change this later in Settings.</string>
+    <string name="self_prompt_yes">Check for updates</string>
+    <string name="self_prompt_no">Don\'t check</string>
+
+    <!-- Notifications -->
+    <string name="notif_self_available_title">RepoShelf update available</string>
+    <string name="notif_self_ready_title">RepoShelf update ready to install</string>
+    <string name="notif_self_confirm_title">Confirm the RepoShelf update to %1$s</string>
+    <string name="notif_self_installed_title">RepoShelf was updated</string>
+</resources>

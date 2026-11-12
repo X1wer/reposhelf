@@ -25,7 +25,11 @@ import io.github.x1wer.reposhelf.core.model.RepoRef
 import io.github.x1wer.reposhelf.core.model.Severity
 import io.github.x1wer.reposhelf.core.source.Fetch
 import io.github.x1wer.reposhelf.core.source.ProviderRegistry
+import io.github.x1wer.reposhelf.core.data.safety.AppRef
+import io.github.x1wer.reposhelf.core.data.safety.SecurityWarnings
 import io.github.x1wer.reposhelf.core.update.AppOverrides
+import io.github.x1wer.reposhelf.core.update.WarningClassifier
+import io.github.x1wer.reposhelf.core.update.WarningSpec
 import io.github.x1wer.reposhelf.core.update.AppPolicy
 import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import io.github.x1wer.reposhelf.core.update.InstallOutcome
@@ -85,13 +89,16 @@ class TrackedAppsRepository(
     private val device: () -> DeviceProfile,
     private val budget: RequestBudget,
     private val clock: Clock = Clock.systemUTC(),
+    /** Biztonsági figyelmeztetések (C. 20.): az ellenőrzés és a vizsgálat eredményéből. */
+    private val warnings: SecurityWarnings? = null,
     /** A globális beállítások (C. 12.5–12.6.): az alkalmazásonkénti felülírások ezekhez képest érvényesek. */
     private val globalSettings: suspend () -> GlobalSettings = { GlobalSettings() },
 ) {
     private val dao = db.trackedAppDao()
     private val catalogDao = db.catalogDao()
     private val discovery = ReleaseDiscovery(providers)
-    private val analyses = object : KnownAnalyses {
+    /** A korábbi APK-elemzések assetenként (a saját frissítés ellenőrzése is ezt használja). */
+    val analyses: KnownAnalyses = object : KnownAnalyses {
         override suspend fun of(provider: ProviderId, assetId: Long): KnownAnalysis? =
             dao.analysis(provider.id, assetId)?.let { KnownAnalysis(it.versionCode, rejected = it.verdict == VERDICT_REJECTED) }
     }
@@ -239,9 +246,22 @@ class TrackedAppsRepository(
      * A letöltött állomány(ok) vizsgálati eredményének rögzítése assetenként. Csak akkor, ha a fájl sértetlenül
      * megérkezett: a letöltési hiba átmeneti lehet, azt nem jegyezzük meg végleges elutasításként.
      */
-    suspend fun recordAnalysis(repo: RepoRef, release: Release, assets: List<ReleaseAsset>, files: List<DownloadedApk>, report: VerificationReport) {
+    suspend fun recordAnalysis(
+        repo: RepoRef,
+        release: Release,
+        assets: List<ReleaseAsset>,
+        files: List<DownloadedApk>,
+        report: VerificationReport,
+        /** Követett sor nélküli alkalmazásnál (a RepoShelf saját frissítése) a figyelmeztetés címzettje. */
+        untracked: AppRef? = null,
+    ): List<WarningSpec> {
         val provider = repo.provider
-        if (report.integrity.any { it.status == CheckStatus.FAILED }) return
+        // A sérült letöltés is C. 20. eset (figyelmeztetés), de végleges elutasításként nem jegyezzük meg.
+        val row = if (untracked == null) dao.byRepoKey(repo.key) else null
+        val target = untracked ?: AppRef(row?.id, report.facts?.packageName ?: row?.packageName, row?.displayName ?: repo.name)
+        val fresh = warnings?.record(target, WarningClassifier.fromReport(report)).orEmpty()
+        warnings?.resolve(target, WarningClassifier.resolvedByReport(report))
+        if (report.integrity.any { it.status == CheckStatus.FAILED }) return fresh
         val rejected = !report.isInstallable
         val reason = report.findings.filter { it.severity == Severity.CRITICAL }.joinToString(",") { it.kind.name }.take(200).ifEmpty { null }
         val now = clock.millis()
@@ -256,6 +276,7 @@ class TrackedAppsRepository(
                 ),
             )
         }
+        return fresh
     }
 
     /**
@@ -400,6 +421,10 @@ class TrackedAppsRepository(
         val now = clock.millis()
         val current = dao.byId(app.id)?.app ?: return check
         updateSafely(current.withCheck(check, now).copy(everInstalled = current.everInstalled || installedNow != null))
+        warnings?.let { store ->
+            store.record(AppRef(current.id, current.packageName, current.displayName), WarningClassifier.fromCheck(check))
+            store.resolve(current.id, WarningClassifier.resolvedByCheck(check))
+        }
         return check
     }
 

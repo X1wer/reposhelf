@@ -154,6 +154,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = SettingsVi
             }
             if (!notificationsAllowed) Text(stringResource(R.string.notif_disabled_banner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { startSafely(context, container.notifier.settingsIntent()) }) { Text(stringResource(R.string.action_notification_settings)) }
+
+            Section(stringResource(R.string.self_section))
+            SelfUpdateSection(container, settings.selfUpdateCheck) { v -> viewModel.update { it.copy(selfUpdateCheck = v) } }
         }
     }
 }
@@ -165,7 +168,7 @@ private fun Section(title: String) {
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
