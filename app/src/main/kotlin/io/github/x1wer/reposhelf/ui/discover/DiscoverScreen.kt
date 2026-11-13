@@ -192,12 +192,17 @@ private fun CategoryChips(
 @Composable
 private fun CatalogStatusBanner(status: CatalogStatus, initializing: Boolean) {
     if (initializing) return
+    // Offline a frissítési hibát nem ismételjük: a kapcsolat hiányát az offline sáv jelzi (C. 24.).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val online by androidx.compose.runtime.remember {
+        (context.applicationContext as io.github.x1wer.reposhelf.RepoShelfApplication).container.connectivity.online
+    }.collectAsStateWithLifecycle()
     val now = Instant.now()
     val lines = buildList {
         when {
             !status.hasCatalog -> add(stringResource(R.string.catalog_empty) to true)
             status.lastError == CatalogErrorKind.UNSUPPORTED_SCHEMA -> add(stringResource(R.string.status_unsupported) to true)
-            status.lastError != null -> add(stringResource(R.string.status_update_failed, status.lastError!!.describe(status.lastErrorDetail)) to true)
+            status.lastError != null && online -> add(stringResource(R.string.status_update_failed, status.lastError!!.describe(status.lastErrorDetail)) to true)
             status.source == CatalogSource.BUNDLED -> add(stringResource(R.string.status_bundled) to false)
         }
         if (status.hasCatalog && status.isExpired(now)) add(stringResource(R.string.status_expired) to true)

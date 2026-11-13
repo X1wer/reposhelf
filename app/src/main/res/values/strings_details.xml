@@ -155,7 +155,7 @@
 
     <string name="action_open_app">Open</string>
     <string name="action_app_info">App info</string>
-    <string name="shortcut_offer">Add a shortcut to the home screen?</string>
+    <string name="shortcut_offer">If the app is not on your home screen yet, you can add a shortcut:</string>
     <string name="action_add_shortcut">Add shortcut</string>
     <string name="shortcut_requested">Shortcut requested – confirm it in the launcher.</string>
     <string name="shortcut_unsupported">Your launcher does not support adding shortcuts.</string>

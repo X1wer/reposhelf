@@ -90,10 +90,16 @@ private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
 private const val WIDE_SCREEN_DP = 600
 private val MAX_CONTENT_WIDTH = 840.dp
 
-private fun NavHostController.openTopLevel(destination: TopLevelDestination) = navigate(destination.route) {
-    popUpTo(graph.findStartDestination().id) { saveState = true }
-    launchSingleTop = true
-    restoreState = true
+/**
+ * A fülre koppintás mindig a fül kezdőképernyőjét mutatja (a fülről korábban megnyitott adatlap nem jön vissza): ha a
+ * kezdőképernyő a veremben van, odáig lépünk vissza, különben a kezdő fül fölé nyitjuk meg.
+ */
+private fun NavHostController.openTopLevel(destination: TopLevelDestination) {
+    if (popBackStack(destination.route, inclusive = false)) return
+    navigate(destination.route) {
+        popUpTo(graph.findStartDestination().id)
+        launchSingleTop = true
+    }
 }
 
 private fun NavDestination?.isIn(destination: TopLevelDestination): Boolean =
@@ -110,10 +116,7 @@ fun RepoShelfApp(
     // Értesítésből: a saját frissítés a Beállításokban (C. 14.).
     LaunchedEffect(openSelfUpdateRequest) {
         if (!openSelfUpdateRequest) return@LaunchedEffect
-        navController.navigate(TopLevelDestination.SETTINGS.route) {
-            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-            launchSingleTop = true
-        }
+        navController.openTopLevel(TopLevelDestination.SETTINGS)
         onOpenSelfUpdateHandled()
     }
     // Értesítésből: közvetlenül az érintett alkalmazás adatlapja (C. 13.).

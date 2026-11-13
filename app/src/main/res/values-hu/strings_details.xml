@@ -155,7 +155,7 @@
 
     <string name="action_open_app">Megnyitás</string>
     <string name="action_app_info">Alkalmazásinformáció</string>
-    <string name="shortcut_offer">Kerüljön parancsikon a kezdőképernyőre?</string>
+    <string name="shortcut_offer">Ha az alkalmazás ikonja még nincs a kezdőképernyőn, parancsikont tehetsz ki:</string>
     <string name="action_add_shortcut">Parancsikon hozzáadása</string>
     <string name="shortcut_requested">Parancsikon kérve – erősítsd meg a kezdőképernyőn.</string>
     <string name="shortcut_unsupported">A kezdőképernyő-alkalmazásod nem támogatja a parancsikonok hozzáadását.</string>
