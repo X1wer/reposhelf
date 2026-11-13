@@ -21,6 +21,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Figyelmeztetések (C. 20.) és előzmények (C. 15.) tárolása (B. 6.4.). */
@@ -99,5 +100,21 @@ class SafetyTest {
         val entries = history.observe(limit = 5000).first()
         assertEquals(UpdateHistory.MAX_ENTRIES, entries.size)
         assertEquals("v${UpdateHistory.MAX_ENTRIES + 4}", entries.first().to?.name, "a legújabbak maradnak meg")
+    }
+
+    // ---- STO-02: az előzménybe kerülő rendszerüzenetben nem marad URL, útvonal vagy megjelenítést átrendező karakter ----
+
+    @Test
+    fun historyMessage_isStrippedOfUrlsPathsAndControlCharacters() {
+        fun clean(text: String?) = UpdateHistory.sanitize(text)
+        assertEquals("failed at <url>", clean("failed at HTTP://example.org/x?token=abc"))
+        assertEquals("see <url> and <url>", clean("see content://media/external/1 and File:///sdcard/a.apk"))
+        assertEquals("cannot read <path>", clean("cannot read /mnt/media_rw/1234-ABCD/app.apk"))
+        assertEquals("cannot read <path> (base)", clean("cannot read /apex/com.android.art/lib64/x.so (base)"))
+        assertEquals("a b c", clean("a\nb\u202Ec"))
+        assertEquals("INSTALL_FAILED_VERSION_DOWNGRADE: 1/2 lower", clean("INSTALL_FAILED_VERSION_DOWNGRADE: 1/2 lower"), "a törtszerű szöveg nem útvonal")
+        assertEquals(200, clean("x".repeat(5000))?.length)
+        assertNull(clean(" \n\t "))
+        assertNull(clean(null))
     }
 }

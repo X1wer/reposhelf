@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- SPDX-FileCopyrightText: 2026 RepoShelf contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- Android 11 és régebbi (fullBackupContent). Ugyanaz a szabály, mint a data_extraction_rules.xml-ben. -->
+<!-- Android 11 és régebbi (fullBackupContent). Ugyanaz a szabály, mint a data_extraction_rules.xml-ben: semmi nem
+     mentődik (a manifestben az allowBackup is ki van kapcsolva); az átvitelre az export/import szolgál. -->
 <full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
     <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
 </full-backup-content>

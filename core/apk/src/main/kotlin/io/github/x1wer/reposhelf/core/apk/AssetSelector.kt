@@ -7,7 +7,12 @@ import io.github.x1wer.reposhelf.core.model.AssetFilterSyntax
 import io.github.x1wer.reposhelf.core.model.ReleaseAsset
 
 /** Miért nem választható egy állomány. */
-enum class AssetRejection { APP_BUNDLE, SPLIT_ARCHIVE, INCOMPATIBLE_ABI, FILTERED_OUT }
+enum class AssetRejection {
+    APP_BUNDLE, SPLIT_ARCHIVE, INCOMPATIBLE_ABI, FILTERED_OUT,
+
+    /** Külön állományokként közzétett split-APK-készlet tagja (alap-APK + `split_*` / `config.*`): nem támogatott (D-073). */
+    SPLIT_SET,
+}
 
 data class RejectedAsset(val asset: ReleaseAsset, val reason: AssetRejection)
 
@@ -36,7 +41,20 @@ object AssetSelector {
     private val SPLIT_NAME = Regex("(^|[-_.])(split[_-]|config\\.)", RegexOption.IGNORE_CASE)
     private val BASE_NAME = Regex("(^|[-_.])base\\.apk$", RegexOption.IGNORE_CASE)
 
-    fun select(assets: List<ReleaseAsset>, deviceAbis: List<String>, assetFilter: String?): AssetSelection {
+    /**
+     * A külön állományokként közzétett split-APK-készlet támogatása (D-073). KIKAPCSOLVA: a rendszer csomagelemzője az
+     * önálló split-APK-t nem dolgozza fel, így a splitek aláírását és csomagadatait telepítés ELŐTT nem tudnánk
+     * ellenőrizni. A készletet ezért már a választáskor, letöltés nélkül, érthető okkal elutasítjuk (korábban letöltődött,
+     * és félrevezető „érvénytelen aláírás” hibával bukott el).
+     */
+    const val SPLIT_SETS_SUPPORTED = false
+
+    fun select(
+        assets: List<ReleaseAsset>,
+        deviceAbis: List<String>,
+        assetFilter: String?,
+        allowSplitSets: Boolean = SPLIT_SETS_SUPPORTED,
+    ): AssetSelection {
         val rejected = mutableListOf<RejectedAsset>()
         val apks = mutableListOf<ReleaseAsset>()
         for (asset in assets) {
@@ -64,7 +82,15 @@ object AssetSelector {
             }
         }
 
-        splitSet(candidates, deviceAbis)?.let { return it }
+        val set = splitSet(candidates, deviceAbis)
+        if (set != null) {
+            if (allowSplitSets) return set
+            // A készlet minden tagja kimarad; ha a kiadásban van más (önálló) APK is, abból választunk.
+            val members = candidates.filter { it == set.base || SPLIT_NAME.containsMatchIn(it.name) }
+            members.forEach { rejected += RejectedAsset(it, AssetRejection.SPLIT_SET) }
+            candidates = candidates.filterNot { it in members }
+            if (candidates.isEmpty()) return AssetSelection.NoInstallable(rejected)
+        }
 
         val normalizedDevice = deviceAbis.map(AbiDetector::normalize)
         val scored = candidates.mapNotNull { asset ->

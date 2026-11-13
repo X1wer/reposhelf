@@ -68,6 +68,7 @@ import io.github.x1wer.reposhelf.core.apk.Check
 import io.github.x1wer.reposhelf.core.apk.CheckItem
 import io.github.x1wer.reposhelf.core.apk.CheckStatus
 import io.github.x1wer.reposhelf.core.apk.PreCheck
+import io.github.x1wer.reposhelf.core.apk.PreliminaryCompatibility
 import io.github.x1wer.reposhelf.core.apk.PreliminaryCheck
 import io.github.x1wer.reposhelf.core.apk.SignerIdentity
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
@@ -537,9 +538,11 @@ private fun Preliminary(checks: List<PreliminaryCheck>) {
         checks.forEach { check ->
             val text = when (check.check) {
                 PreCheck.FORMAT -> stringResource(
-                    when (check.status) {
-                        CheckStatus.OK -> R.string.pre_format_ok
-                        CheckStatus.WARNING -> R.string.pre_format_choose
+                    when {
+                        check.status == CheckStatus.OK -> R.string.pre_format_ok
+                        check.status == CheckStatus.WARNING -> R.string.pre_format_choose
+                        // A külön állományokra bontott split-készlet nem ellenőrizhető telepítés előtt: az okot kiírjuk.
+                        check.detail == PreliminaryCompatibility.DETAIL_SPLIT_SET -> R.string.pre_format_split_set
                         else -> R.string.pre_format_none
                     },
                 )

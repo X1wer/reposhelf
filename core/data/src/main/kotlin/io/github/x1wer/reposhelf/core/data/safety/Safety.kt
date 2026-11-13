@@ -192,9 +192,23 @@ class UpdateHistory(db: AppDatabase, private val clock: Clock = Clock.systemUTC(
 
         /** A rendszer hibaüzenetéből csak rövid, URL- és útvonalmentes szöveg marad (ne kerüljön bele érzékeny adat). */
         fun sanitize(message: String?): String? = message
-            ?.replace(Regex("https?://\\S+"), "<url>")
-            ?.replace(Regex("/(data|storage|sdcard)/\\S+"), "<path>")
+            ?.take(MAX_RAW_MESSAGE)
+            ?.replace(CONTROL_OR_FORMAT, " ")
+            ?.replace(ANY_URL, "<url>")
+            ?.replace(ABSOLUTE_PATH, "<path>")
+            ?.trim()
             ?.take(200)
             ?.ifBlank { null }
+
+        private const val MAX_RAW_MESSAGE = 1000
+
+        /** Vezérlő- és formázó karakterek (sortörés, irányváltó, nulla szélességű): a megjelenített szöveget nem rendezhetik át. */
+        private val CONTROL_OR_FORMAT = Regex("[\\p{Cc}\\p{Cf}]+")
+
+        /** Bármilyen sémájú URL (http, https, content, file…), kis- és nagybetűtől függetlenül. */
+        private val ANY_URL = Regex("(?i)\\b[a-z][a-z0-9+.-]{1,15}://\\S+")
+
+        /** Abszolút útvonal bármely gyökér alatt (legalább egy könyvtárszinttel), nem csak a /data alatt. */
+        private val ABSOLUTE_PATH = Regex("(?<![\\w<.])/(?:[\\w.@+~-]+/)+[\\w.@+~-]*")
     }
 }

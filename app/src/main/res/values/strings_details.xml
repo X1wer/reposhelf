@@ -59,6 +59,7 @@
     <string name="pre_format_ok">Installable package found</string>
     <string name="pre_format_choose">Several packages – you will choose one</string>
     <string name="pre_format_none">No installable package</string>
+    <string name="pre_format_split_set">This release is published only as a split APK set (a base package plus separate split files). RepoShelf cannot check such a set before installation, so it does not install it.</string>
     <string name="pre_abi_ok">Built for this device\'s processor (%1$s)</string>
     <string name="pre_abi_other">Processor match is uncertain (device: %1$s)</string>
     <string name="pre_abi_unknown">The processor architecture is checked after download</string>
@@ -110,7 +111,7 @@
     <string name="finding_digest_mismatch">The downloaded file does not match the checksum published by GitHub.</string>
     <string name="finding_no_provider_digest">GitHub did not publish a checksum for this file.</string>
     <string name="finding_invalid_apk">The file is not a valid Android package.</string>
-    <string name="finding_invalid_signature">The package signature is invalid.</string>
+    <string name="finding_invalid_signature">The system could not process this file as a valid, signed package. Its signature may be invalid, the file may be damaged, or the app may need a newer Android version.</string>
     <string name="finding_multiple_signers">The package has several signers, which is not supported.</string>
     <string name="finding_signer_changed">The signer differs from the installed app. This is not a safe update.</string>
     <string name="finding_signer_mismatch_pinned">The signer differs from the one recorded in the catalog.</string>

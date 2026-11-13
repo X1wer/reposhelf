@@ -13,6 +13,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.flow.MutableStateFlow
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,8 +36,15 @@ class MainActivity : ComponentActivity() {
     private val openSelf = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Az exportált indító-activity bejövő intentje megbízhatatlan: a Navigation belső deep link extráit eltávolítjuk,
+        // mielőtt a navigációs gráf feldolgozhatná őket (IntentSanitizer).
+        IntentSanitizer.sanitize(intent)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Átfedés (tapjacking) elleni védelem a biztonsági döntések gombjainál (telepítés, figyelmeztetés nyugtázása, a
+        // repó-azonosság elfogadása): Android 12-től a nem rendszer-átfedések nem látszanak, amíg az app előtérben van.
+        // A régebbi rendszereken a telepítés végső jóváhagyása a rendszer saját, védett ablaka.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setHideOverlayWindows(true)
         if (savedInstanceState == null) handleOpenIntent(intent)
         setContent {
             RepoShelfTheme {
@@ -67,6 +75,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        IntentSanitizer.sanitize(intent)
         super.onNewIntent(intent)
         handleOpenIntent(intent)
     }

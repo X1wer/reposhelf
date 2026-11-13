@@ -86,6 +86,8 @@ class UntrustedTextTest {
             "^abc(", "^abc)", "^[abc$", "^abc\\", "*abc", "^(*a)$", "",
             "a".repeat(AssetFilterSyntax.MAX_LENGTH + 1),
             "^a\u0000b$",
+            "^térkép\\.apk$", // nem ASCII
+            "(?P<name>a)",
         )) {
             assertNotNull(AssetFilterSyntax.violation(pattern), "el kellett volna utasítani: $pattern")
             assertNull(AssetFilterSyntax.compileOrNull(pattern), pattern)

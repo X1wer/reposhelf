@@ -99,7 +99,8 @@ class SelectionAndVersionTest {
     @Test
     fun splitSet_includesOnlyMatchingAbiSplit() {
         val assets = listOf("base.apk", "split_config.arm64_v8a.apk", "split_config.x86_64.apk", "split_config.hu.apk").map { asset(it) }
-        val set = assertIs<AssetSelection.SplitSet>(AssetSelector.select(assets, x86Emulator, null))
+        // A készlet felismerése megvan (allowSplitSets), de a termékben ki van kapcsolva (D-073): lásd a következő tesztet.
+        val set = assertIs<AssetSelection.SplitSet>(AssetSelector.select(assets, x86Emulator, null, allowSplitSets = true))
         assertEquals("base.apk", set.base.name)
         assertEquals(listOf("split_config.x86_64.apk", "split_config.hu.apk"), set.splits.map { it.name })
     }
@@ -173,5 +174,24 @@ class SelectionAndVersionTest {
         // A megengedett szűrő változatlanul működik.
         val picked = assertIs<AssetSelection.Single>(AssetSelector.select(listOf(asset("app-fdroid.apk"), asset("app-release.apk")), armPhone, "^(?!.*fdroid).*\\.apk$"))
         assertEquals("app-release.apk", picked.asset.name)
+    }
+
+    // ---- DL-06 / D-073: a külön állományokra bontott split-készlet letöltés nélkül, érthető okkal elutasítva ----
+
+    @Test
+    fun splitSet_isRejectedBeforeDownload_andAStandaloneApkIsPreferred() {
+        assertEquals(false, AssetSelector.SPLIT_SETS_SUPPORTED)
+        val splitOnly = listOf("base.apk", "split_config.arm64_v8a.apk", "split_config.x86_64.apk", "split_config.hu.apk").map { asset(it) }
+        val none = assertIs<AssetSelection.NoInstallable>(AssetSelector.select(splitOnly, x86Emulator, null))
+        assertEquals(4, none.rejected.size)
+        assertTrue(none.rejected.all { it.reason == AssetRejection.SPLIT_SET })
+        val release = Release(1, "v1", "v1", false, false, null, null, null, null, null, splitOnly)
+        val format = PreliminaryCompatibility.assess(none, release, DeviceProfile(37, x86Emulator, null)).first { it.check == PreCheck.FORMAT }
+        assertEquals(CheckStatus.FAILED, format.status)
+        assertEquals(PreliminaryCompatibility.DETAIL_SPLIT_SET, format.detail)
+        // Ha a kiadásban önálló (pl. universal) APK is van, az választódik, a készlet tagjai kimaradnak.
+        val mixed = splitOnly + asset("app-universal-release.apk")
+        val single = assertIs<AssetSelection.Single>(AssetSelector.select(mixed, x86Emulator, null))
+        assertEquals("app-universal-release.apk", single.asset.name)
     }
 }

@@ -225,7 +225,9 @@ class SelfUpdater(
         val own = withContext(Dispatchers.IO) { container.installedPackages.get(context.packageName) }?.signingHistory.orEmpty()
         return InstallTarget(
             expectedPackageName = context.packageName,
-            pinnedSignerCerts = core.config.pinnedSigners.ifEmpty { own.map { it.lowercase() } },
+            // Buildbe fordított ujjlenyomat híján a futó példány JELENLEGI aláírója az elvárt (a rotációs lánc korábbi,
+            // már lecserélt kulcsai nem számítanak megbízhatónak).
+            pinnedSignerCerts = core.config.pinnedSigners.ifEmpty { own.takeLast(1).map { it.lowercase() } },
             minVersionCode = null,
             fromCatalog = false,
         )

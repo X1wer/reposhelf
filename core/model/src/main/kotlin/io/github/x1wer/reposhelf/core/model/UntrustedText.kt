@@ -65,6 +65,8 @@ object AssetFilterSyntax {
     /** A minta hibája, vagy `null`, ha megengedett. */
     fun violation(pattern: String): String? {
         if (pattern.isEmpty() || pattern.length > MAX_LENGTH) return "a hossz 1 és $MAX_LENGTH karakter között lehet"
+        // Csak nyomtatható ASCII: így a szabály és a minta jelentése a kliensben és a Python-validátorban biztosan azonos.
+        if (pattern.any { it !in ' '..'~' }) return "csak nyomtatható ASCII karakter megengedett"
         val n = pattern.length
         var i = 0
         var depth = 0

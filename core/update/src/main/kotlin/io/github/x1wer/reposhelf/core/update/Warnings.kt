@@ -93,7 +93,7 @@ object WarningClassifier {
             specs += WarningSpec(WarningCategory.INCOMPATIBLE, Severity.INFO, check.discovery?.candidate?.tagName)
         }
         val rejected = (check.compatibility?.selection as? AssetSelection.NoInstallable)?.rejected.orEmpty()
-        val formatRejected = rejected.filter { it.reason == AssetRejection.APP_BUNDLE || it.reason == AssetRejection.SPLIT_ARCHIVE }
+        val formatRejected = rejected.filter { it.reason == AssetRejection.APP_BUNDLE || it.reason == AssetRejection.SPLIT_ARCHIVE || it.reason == AssetRejection.SPLIT_SET }
         if (formatRejected.isNotEmpty()) {
             specs += WarningSpec(WarningCategory.UNEXPECTED_FORMAT, Severity.INFO, formatRejected.joinToString { it.asset.name }.take(200))
         }

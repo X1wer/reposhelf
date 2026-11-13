@@ -36,6 +36,9 @@ data class PreliminaryCheck(val check: PreCheck, val status: CheckStatus, val de
 enum class PreCheck { FORMAT, ABI, ANDROID_VERSION, STORAGE, RELEASE_TYPE }
 
 object PreliminaryCompatibility {
+    /** A [PreCheck.FORMAT] részlete, ha a kiadás csak külön állományokra bontott split-APK-készletet tartalmaz. */
+    const val DETAIL_SPLIT_SET = "split-set"
+
     /**
      * Csak a letöltés előtt is ismert adatokból becsül. A minimális Android-verzió, a csomagazonosító és az aláírás
      * csak a letöltött APK-ból derül ki, ezért ezek itt „nem ellenőrzött” állapotúak.
@@ -50,7 +53,10 @@ object PreliminaryCompatibility {
         checks += when (selection) {
             is AssetSelection.Single, is AssetSelection.SplitSet -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.OK)
             is AssetSelection.Ambiguous -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.WARNING, "${selection.candidates.size}")
-            is AssetSelection.NoInstallable -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.FAILED)
+            is AssetSelection.NoInstallable -> PreliminaryCheck(
+                PreCheck.FORMAT, CheckStatus.FAILED,
+                DETAIL_SPLIT_SET.takeIf { selection.rejected.any { r -> r.reason == AssetRejection.SPLIT_SET } },
+            )
         }
         if (chosen.isNotEmpty()) {
             val tags = chosen.map { AbiDetector.detect(it.name) }

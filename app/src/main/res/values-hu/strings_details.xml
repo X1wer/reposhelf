@@ -59,6 +59,7 @@
     <string name="pre_format_ok">Telepíthető csomag található</string>
     <string name="pre_format_choose">Több csomag van – választani fogsz</string>
     <string name="pre_format_none">Nincs telepíthető csomag</string>
+    <string name="pre_format_split_set">Ez a kiadás csak split-APK-készletként érhető el (alapcsomag és külön kiegészítő állományok). A RepoShelf az ilyen készletet telepítés előtt nem tudja ellenőrizni, ezért nem telepíti.</string>
     <string name="pre_abi_ok">Ennek az eszköznek a processzorára készült (%1$s)</string>
     <string name="pre_abi_other">A processzor-illeszkedés bizonytalan (eszköz: %1$s)</string>
     <string name="pre_abi_unknown">A processzorarchitektúra a letöltés után derül ki</string>
@@ -110,7 +111,7 @@
     <string name="finding_digest_mismatch">A letöltött fájl nem egyezik a GitHub által közölt ellenőrzőösszeggel.</string>
     <string name="finding_no_provider_digest">A GitHub nem közölt ellenőrzőösszeget ehhez a fájlhoz.</string>
     <string name="finding_invalid_apk">A fájl nem érvényes Android-csomag.</string>
-    <string name="finding_invalid_signature">A csomag aláírása érvénytelen.</string>
+    <string name="finding_invalid_signature">A rendszer nem tudta érvényes, aláírt csomagként feldolgozni ezt az állományt. Lehet, hogy az aláírása érvénytelen, az állomány sérült, vagy az alkalmazás újabb Android-verziót igényel.</string>
     <string name="finding_multiple_signers">A csomagnak több aláírója van, ez nem támogatott.</string>
     <string name="finding_signer_changed">Az aláíró eltér a telepített alkalmazásétól. Ez nem biztonságos frissítés.</string>
     <string name="finding_signer_mismatch_pinned">Az aláíró eltér a katalógusban rögzítettől.</string>

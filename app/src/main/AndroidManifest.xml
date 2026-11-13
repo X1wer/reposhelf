@@ -6,6 +6,11 @@
   Jogosultságok: a 2. munkamenetben csak INTERNET. A telepítéshez és a háttérműködéshez szükséges
   jogosultságok a 3–5. munkamenetben kerülnek ide, indoklással (docs/ARCHITECTURE.md 11–13.).
   Exportált komponens csak a launcher-activity (docs/ARCHITECTURE.md 10.1.).
+
+  Mentés (biztonsági audit, STO-01): az alkalmazás adatai sem felhőmentésbe, sem eszközök közötti átvitelbe nem
+  kerülnek (allowBackup=false és mindent kizáró szabályok). Az adatok eszközhöz kötött bizalmi állapotot is tartalmaznak
+  (rögzített aláírók, repó-azonosítók, függő telepítések), amelyek más eszközön érvénytelenek vagy félrevezetők
+  lennének. A követett lista átvitelére az export/import szolgál (C. 25.).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -14,10 +19,13 @@
          értesítések bekapcsolásakor, magyarázattal (ARCH 12., D-063). A WorkManager a hálózat- és az újraindítás-
          figyeléshez saját engedélyeket hoz (ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED, WAKE_LOCK). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Normál engedély (Android 12+): amíg az app előtérben van, a nem rendszer-átfedések nem látszanak, így a biztonsági
+         döntések gombjai nem takarhatók el megtévesztő felülettel (tapjacking; MainActivity). -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
     <application
         android:name=".RepoShelfApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"
