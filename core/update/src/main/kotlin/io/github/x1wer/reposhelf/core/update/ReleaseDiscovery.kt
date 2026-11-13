@@ -44,6 +44,18 @@ enum class RepoIdentity {
     OWNER_CHANGED,
 }
 
+/** A repó azonosságának megítélése a telepítés előtt ([ReleaseDiscovery.confirmIdentity]). */
+sealed interface RepoIdentityVerdict {
+    /** A néven az elvárt azonosítójú repó van. [firstSeen]: nem volt elvárt azonosító (első találkozás, TOFU). */
+    data class Confirmed(val repo: RepoMetadata, val firstSeen: Boolean) : RepoIdentityVerdict
+
+    /** Azonos néven MÁS repó van: a telepítés tiltva (C. 19–20., kritikus). */
+    data class Mismatch(val expected: ProviderRepoId, val actual: ProviderRepoId) : RepoIdentityVerdict
+
+    /** Az azonosság most nem igazolható (hálózat, API-keret, eltűnt repó): a letöltés nem indulhat el. */
+    data class Unconfirmed(val failure: UpdateFailure) : RepoIdentityVerdict
+}
+
 data class Discovery(
     /** A repó AKTUÁLIS adatai (átnevezés után az új név). */
     val repo: RepoMetadata,
@@ -124,6 +136,29 @@ class ReleaseDiscovery(
             findings += Finding(FindingKind.NO_INSTALLABLE_RELEASE, Severity.INFO, detail)
         }
         return StepResult.Ok(Discovery(repo, identity, resolved, candidate), findings)
+    }
+
+    /**
+     * A repó azonosságának megerősítése KÖZVETLENÜL a letöltés előtt (C. 19.), egyetlen API-hívással. A kézi telepítés
+     * (adatlap) a kiadásokat név szerint kéri le, ezért a telepítés előtt mindig meg kell győződni arról, hogy a néven
+     * most is az elvárt (a katalógusban aláírtan rögzített, illetve a követett sornál korábban rögzített) stabil
+     * azonosítójú repó van: különben a törölt repó helyén azonos néven létrehozott idegen repóból (repojacking)
+     * ELSŐ telepítésként települhetne alkalmazás, amit a platform nem véd.
+     *
+     * [expected] minden eleme kötelező: ha bármelyik eltér, az eredmény [RepoIdentityVerdict.Mismatch]. Ha a repó nem
+     * kérhető le, az azonosság nem igazolt ([RepoIdentityVerdict.Unconfirmed]): ilyenkor a letöltés nem indulhat el.
+     */
+    suspend fun confirmIdentity(ref: RepoRef, expected: List<ProviderRepoId>): RepoIdentityVerdict {
+        val provider = providers.get(ref.provider) ?: return RepoIdentityVerdict.Unconfirmed(UpdateFailure.Other("provider"))
+        return when (val fetched = provider.repository(ref)) {
+            is Fetch.Fresh -> {
+                val actual = fetched.value.id
+                val violated = expected.firstOrNull { it != actual }
+                if (violated != null) RepoIdentityVerdict.Mismatch(violated, actual) else RepoIdentityVerdict.Confirmed(fetched.value, firstSeen = expected.isEmpty())
+            }
+            Fetch.NotFound -> RepoIdentityVerdict.Unconfirmed(UpdateFailure.RepoNotFound)
+            else -> RepoIdentityVerdict.Unconfirmed(failure(fetched).failure)
+        }
     }
 
     private fun notFound(): StepResult.Failed =

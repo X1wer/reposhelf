@@ -65,6 +65,13 @@ data class HttpPolicy(
     }
 }
 
+/**
+ * A szervertől kapott validátor (ETag / Last-Modified) csak akkor tárolható és küldhető vissza kérésfejlécben, ha rövid
+ * és nyomtatható ASCII. Minden más érték (vezérlő- vagy nem ASCII karakter, túl hosszú szöveg) olyan, mintha nem lenne
+ * validátor: a fejlécbe írása kivételt dobna, tárolva pedig tartós hibát okozna.
+ */
+fun safeValidator(value: String?): String? = value?.takeIf { it.isNotEmpty() && it.length <= 256 && it.all { c -> c in ' '..'~' } }
+
 /** HTTP-validátorok a feltételes kérésekhez (ETag / Last-Modified, C. 16.). */
 data class Validators(val etag: String?, val lastModified: String?) {
     val isEmpty: Boolean get() = etag == null && lastModified == null

@@ -165,7 +165,8 @@ class GitHubProvider(
         htmlUrl = htmlUrl?.takeIf { it.toHttpUrlOrNull()?.isHttps == true },
         isImmutable = immutable,
         // Nem HTTPS letöltési URL-ű assetet nem veszünk fel (a letöltéskor is újra ellenőrizzük).
-        assets = assets.filter { it.name.isNotBlank() && it.size >= 0 && it.browserDownloadUrl.toHttpUrlOrNull()?.isHttps == true }
+        // A 0 méretű vagy még fel nem töltött (állapota nem „uploaded”) asset sem telepíthető.
+        assets = assets.filter { it.name.isNotBlank() && it.size > 0 && (it.state == null || it.state == "uploaded") && it.browserDownloadUrl.toHttpUrlOrNull()?.isHttps == true }
             .map { it.toModel() },
     )
 

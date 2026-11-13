@@ -47,6 +47,7 @@ import io.github.x1wer.reposhelf.core.source.readme.ReadmeParser
 import io.github.x1wer.reposhelf.core.update.AppOverrides
 import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import io.github.x1wer.reposhelf.core.update.InstallOutcome
+import io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict
 import io.github.x1wer.reposhelf.core.update.StepResult
 import io.github.x1wer.reposhelf.core.update.UpdateFailure
 import io.github.x1wer.reposhelf.core.data.safety.SecurityWarning
@@ -90,6 +91,12 @@ sealed interface InstallUiState {
     data class Succeeded(val packageName: String, val versionName: String?, val verified: Boolean) : InstallUiState
     data class Failed(val status: Int, val message: String?, val developerVerificationReason: Int?, val explanation: Intent?) : InstallUiState
     data class StartFailed(val reason: String) : InstallUiState
+
+    /**
+     * A forrásrepó azonossága most nem igazolható (nincs kapcsolat, elfogyott az API-keret, a repó nem érhető el):
+     * a letöltés biztonsági okból nem indult el (C. 19.).
+     */
+    data object IdentityUnconfirmed : InstallUiState
 }
 
 data class DetailsUiState(
@@ -115,9 +122,16 @@ data class DetailsUiState(
     val readyFromBackground: Boolean = false,
     /** Mentett (offline) adatot mutatunk, mert a lekérés nem sikerült: a mentés ideje (C. 24.). */
     val savedAt: java.time.Instant? = null,
+    /**
+     * A néven most MÁS repó van, mint amit a katalógus (aláírtan) vagy a követett sor rögzített: „elvárt → tényleges”
+     * azonosító. Nem követett katalógusbeli appnál is tilt (ott nincs követett sor, amely az állapotot hordozná).
+     */
+    val identityMismatch: String? = null,
+    /** A katalógus aláírtan rögzíti az azonosítót: az eltérést a felhasználó nem fogadhatja el. */
+    val identityPinnedByCatalog: Boolean = false,
 ) {
-    /** Azonos néven más repó: a telepítés tiltva, amíg a felhasználó nem dönt (C. 19.). */
-    val installBlockedByRepo: Boolean get() = tracked?.repoState == RepoState.ID_CHANGED
+    /** Azonos néven más repó: a telepítés tiltva (C. 19.). */
+    val installBlockedByRepo: Boolean get() = tracked?.repoState == RepoState.ID_CHANGED || identityMismatch != null
 }
 
 class DetailsViewModel(private val key: DetailsKey, private val container: AppContainer) : ViewModel() {
@@ -128,6 +142,9 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
     private var sessionId: Int? = null
     private var committedFiles: List<DownloadedApk>? = null
     private var trackedJob: Job? = null
+
+    /** A letöltés előtt frissen megerősített repó-adat (a telepítés utáni rögzítéshez; C. 19.). */
+    private var confirmedRepo: RepoMetadata? = null
 
     /** A megjelenített ellenőrzött frissítés a háttérben készült (fájljai a háttérfeladathoz tartoznak, nem töröljük). */
     private var verifiedFromBackground = false
@@ -163,7 +180,9 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         is DetailsKey.Catalog -> {
             val app = container.catalogRepository.app(key.id)
             app?.let {
-                val tracked = container.trackedApps.forCatalogApp(it.id)
+                // A követett sor csak akkor tartozik ehhez a bejegyzéshez, ha ugyanarra a repóra szól (egy
+                // katalógusfrissítés ugyanazon azonosító alatt más repóra mutathat; a régi sor külön marad).
+                val tracked = container.trackedApps.forCatalogApp(it.id)?.takeIf { row -> row.repo.key == it.repo.key }
                 // A katalógus csomagneve opcionális; ha nincs, a korábban megtanult (ellenőrzött APK-ból származó) érvényes.
                 AppSubject(it.name, it.repo, it, it.packageName ?: tracked?.packageName) to tracked
             }
@@ -171,7 +190,7 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         is DetailsKey.Tracked -> {
             val tracked = container.trackedApps.get(key.id)
             tracked?.let { t ->
-                val catalog = t.catalogId?.let { container.catalogRepository.app(it) }
+                val catalog = container.trackedApps.boundCatalogApp(t.catalogId, t.repo)
                 AppSubject(t.displayName, t.repo, catalog, catalog?.packageName ?: t.packageName) to t
             }
         }
@@ -188,6 +207,11 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
             observeTracked(tracked?.id)
             val details = container.appDetails.load(subject.repo, force)
             val repo = details.repo.value
+            // Azonos néven más repó (C. 19.): már a megjelenítéskor jelezzük, és tiltjuk a telepítést. A mérvadó,
+            // friss ellenőrzés a letöltés előtt fut (confirmRepositoryIdentity).
+            val expectedIds = listOfNotNull(tracked?.repoId, subject.catalogApp?.repositoryId)
+            val violated = repo?.let { loaded -> expectedIds.firstOrNull { it != loaded.id } }
+            if (violated != null && repo != null) container.trackedApps.noteRepositoryIdMismatch(subject.repo, tracked?.id, violated, repo.id)
             val context = LinkContext(subject.repo.owner, subject.repo.name, repo?.defaultBranch ?: "HEAD")
             val readme = details.readme.value?.let { withContext(Dispatchers.Default) { ReadmeParser.parse(it.markdown, context) } }
             val resolved = details.releases.value?.let(ReleaseResolver::resolve)
@@ -199,6 +223,8 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
             _state.update {
                 it.copy(
                     savedAt = savedAt,
+                    identityMismatch = if (violated != null && repo != null) "${violated.value} → ${repo.id.value}" else null,
+                    identityPinnedByCatalog = subject.catalogApp?.repositoryId != null,
                     loading = false,
                     repo = repo,
                     repoError = details.repo.error,
@@ -238,10 +264,18 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
             it.copy(
                 usePrerelease = usePrerelease && resolved.latestPrerelease != null,
                 release = release,
-                releaseNotes = release?.body?.takeIf { body -> body.isNotBlank() }?.let { body -> ReadmeParser.parse(body, linkContext) },
+                releaseNotes = if (it.release?.id == release?.id) it.releaseNotes else null,
                 selection = selection,
                 preliminary = preliminary,
             )
+        }
+        // A kiadási jegyzet megbízhatatlan szöveg: a feldolgozása nem futhat a fő szálon.
+        val body = release?.body?.takeIf { it.isNotBlank() }
+        if (body != null && release != null) {
+            viewModelScope.launch {
+                val notes = withContext(Dispatchers.Default) { ReadmeParser.parse(body, linkContext) }
+                _state.update { if (it.release?.id == release.id) it.copy(releaseNotes = notes) else it }
+            }
         }
         offerBackgroundReady()
     }
@@ -297,7 +331,12 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
     /** A felhasználó elfogadja a repó megváltozott azonosságát (C. 19.); az aláíró-ellenőrzés ettől függetlenül kötelező. */
     fun acceptRepositoryIdentity() {
         val tracked = _state.value.tracked ?: return
-        viewModelScope.launch { if (container.trackedApps.acceptRepositoryIdentity(tracked.id)) load(force = true) }
+        val shown = _state.value.repo?.id
+        viewModelScope.launch {
+            container.trackedApps.acceptRepositoryIdentity(tracked.id, shown)
+            // Sikertelen elfogadásnál is újratöltünk: az adatlap a jelenlegi állapotot mutassa.
+            load(force = true)
+        }
     }
 
     // ---- Telepítés és frissítés (4–8. lépés) ----
@@ -312,7 +351,10 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         }
     }
 
-    fun onAssetChosen(asset: ReleaseAsset) = startDownload(listOf(asset))
+    fun onAssetChosen(asset: ReleaseAsset) {
+        if (_state.value.installBlockedByRepo) return
+        startDownload(listOf(asset))
+    }
 
     fun dismissInstallDialog() = _state.update { it.copy(install = InstallUiState.Idle) }
 
@@ -368,6 +410,27 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         val provider = container.sourceProviders.get(subject.repo.provider) ?: return
         val target = target() ?: return
         viewModelScope.launch {
+            _state.update { it.copy(install = InstallUiState.Verifying) }
+            // A repó azonossága a letöltés ELŐTT, frissen (C. 19.): a kiadások név szerint érkeztek, ezért itt dől el,
+            // hogy a néven most is az elvárt repó van-e. Eltérésnél vagy igazolhatatlan azonosságnál nincs letöltés.
+            when (val verdict = container.trackedApps.confirmRepositoryIdentity(subject.repo, subject.catalogApp, _state.value.tracked?.id)) {
+                is RepoIdentityVerdict.Confirmed -> confirmedRepo = verdict.repo
+                is RepoIdentityVerdict.Mismatch -> {
+                    recordHistory(HistoryOutcome.BLOCKED, null, method = InstallMethod.MANUAL, failureCode = "REPO_ID_CHANGED")
+                    _state.update {
+                        it.copy(
+                            install = InstallUiState.Idle,
+                            identityMismatch = "${verdict.expected.value} → ${verdict.actual.value}",
+                            identityPinnedByCatalog = subject.catalogApp?.repositoryId != null,
+                        )
+                    }
+                    return@launch
+                }
+                is RepoIdentityVerdict.Unconfirmed -> {
+                    _state.update { it.copy(install = InstallUiState.IdentityUnconfirmed) }
+                    return@launch
+                }
+            }
             _state.update { it.copy(install = InstallUiState.Downloading(0, assets.sumOf { a -> a.size })) }
             val prepared = container.installCoordinator.prepare(assets, provider.downloadPolicy(AppContainer.MAX_APK_BYTES), target) { done, total ->
                 _state.update { s -> s.copy(install = if (done >= total) InstallUiState.Verifying else InstallUiState.Downloading(done, total)) }
@@ -384,11 +447,9 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
                     recordHistory(HistoryOutcome.FAILED, null, method = InstallMethod.MANUAL, failureCode = "DOWNLOAD_${prepared.reason.name}", failureMessage = prepared.detail)
             }
             // Ha a csomagnév eddig nem volt ismert, a vizsgált APK-ból megtanuljuk (a telepített verzió így látszik).
-            val learned = when (prepared) {
-                is PreparedInstall.Ready -> prepared.report.facts
-                is PreparedInstall.Blocked -> prepared.report.facts
-                is PreparedInstall.DownloadFailed -> null
-            }?.packageName
+            // Csak a vizsgálaton HIBÁTLANUL átment állományból: egy elutasított (pl. idegen kulcsú, más alkalmazásnak
+            // álcázott) APK nem kötheti a követett sort egy idegen csomagnévhez.
+            val learned = (prepared as? PreparedInstall.Ready)?.report?.facts?.packageName
             if (learned != null && subject.packageName == null) {
                 container.trackedApps.learnPackageName(subject.repo, subject.catalogApp?.id, learned)
                 val info = withContext(Dispatchers.IO) { container.installedPackages.get(learned) }
@@ -408,6 +469,7 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
 
     fun onConfirmInstall() {
         val verified = _state.value.install as? InstallUiState.Verified ?: return
+        if (_state.value.installBlockedByRepo) return
         val target = target() ?: return
         viewModelScope.launch {
             historyFrom = _state.value.installed?.let { Version(it.versionName, it.versionCode) }
@@ -483,7 +545,7 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         val state = _state.value
         val subject = state.subject ?: return null
         val release = state.release ?: return null
-        val id = container.trackedApps.recordInstall(state.tracked?.id, subject.catalogApp, subject.repo, state.repo, release, outcome)
+        val id = container.trackedApps.recordInstall(state.tracked?.id, subject.catalogApp, subject.repo, confirmedRepo ?: state.repo, release, outcome)
         if (state.tracked == null) observeTracked(id)
         return id
     }

@@ -6,6 +6,10 @@ package io.github.x1wer.reposhelf.core.network
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.asResponseBody
+import okio.Buffer
+import okio.ForwardingSource
+import okio.buffer
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -46,6 +50,13 @@ object HttpClients {
             .addInterceptor(UserAgentInterceptor(userAgent))
             .apply(configure)
             .build()
+
+    /**
+     * Állományletöltéshez: a TELJES hívásra nincs időkorlát (egy nagy APK lassú hálózaton percekig tart), a kapcsolódási
+     * és az olvasási – inaktivitási – időkorlát viszont megmarad, így egy megakadt kapcsolat nem tartja nyitva a
+     * letöltést (docs/ARCHITECTURE.md 6. pont).
+     */
+    fun forDownloads(base: OkHttpClient): OkHttpClient = base.newBuilder().callTimeout(0, TimeUnit.MILLISECONDS).build()
 }
 
 /**
@@ -63,10 +74,33 @@ object ImageHttpClient {
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(60, TimeUnit.SECONDS)
         .addInterceptor(UserAgentInterceptor(userAgent))
-        // Hálózati interceptor: az átirányítás minden egyes lépésén lefut.
+        // A ténylegesen beolvasott (kitömörített) bájtok korlátja: a deklarált hossz hiányozhat vagy hamis lehet.
+        .addInterceptor(ImageBodyLimitInterceptor)
+        // Hálózati interceptorok: az átirányítás minden egyes lépésén lefutnak.
         .addNetworkInterceptor(HttpsOnlyInterceptor)
         .addNetworkInterceptor(ImageSizeInterceptor)
         .build()
+}
+
+/** A képválasz törzsét legfeljebb [ImageHttpClient.MAX_IMAGE_BYTES] bájtig engedi beolvasni (kitömörítés után számolva). */
+internal object ImageBodyLimitInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val response = chain.proceed(chain.request())
+        val body = response.body
+        val limited = object : ForwardingSource(body.source()) {
+            private var total = 0L
+
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                val read = super.read(sink, byteCount)
+                if (read > 0) {
+                    total += read
+                    if (total > ImageHttpClient.MAX_IMAGE_BYTES) throw IOException("A kép túl nagy")
+                }
+                return read
+            }
+        }
+        return response.newBuilder().body(limited.buffer().asResponseBody(body.contentType(), -1L)).build()
+    }
 }
 
 internal object ImageSizeInterceptor : Interceptor {

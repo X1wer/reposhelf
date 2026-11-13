@@ -27,6 +27,7 @@ import io.github.x1wer.reposhelf.core.data.tracked.RequestBudget
 import io.github.x1wer.reposhelf.core.data.tracked.TrackedAppsRepository
 import io.github.x1wer.reposhelf.core.installer.InstallCoordinator
 import io.github.x1wer.reposhelf.core.installer.InstalledPackages
+import io.github.x1wer.reposhelf.core.installer.IsolatedApkInspector
 import io.github.x1wer.reposhelf.core.installer.PackageInstallerGateway
 import io.github.x1wer.reposhelf.core.installer.PlatformApkInspector
 import io.github.x1wer.reposhelf.core.model.ProviderId
@@ -159,8 +160,10 @@ class AppContainer(private val context: Context) {
     val installCoordinator by lazy {
         InstallCoordinator(
             // Privát, backupból kizárt könyvtár (docs/ARCHITECTURE.md 9. pont, 4. lépés).
-            downloader = ApkDownloader(FileDownloader(httpClient), File(context.noBackupFilesDir, "downloads")),
-            verifier = ApkVerifier(PlatformApkInspector(context)),
+            downloader = ApkDownloader(FileDownloader(HttpClients.forDownloads(httpClient)), File(context.noBackupFilesDir, "downloads")),
+            // A rendszer csomagelemzője külön folyamatban, időkorláttal fut (D-031); ha a segédfolyamat nem érhető el,
+            // ugyanaz az elemzés a fő folyamatban.
+            verifier = ApkVerifier(IsolatedApkInspector(context, fallback = PlatformApkInspector(context))),
             installed = installedPackages,
             initiator = InstallInitiator(PackageInstallerGateway(context) { settingsState.value.requestUpdateOwnership }),
             storedPins = trackedApps::pinnedSigners,

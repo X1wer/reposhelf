@@ -128,4 +128,42 @@ class RateLimitAndPolicyTest {
         }.awaitAll()
         assertEquals(2, maxActive.get())
     }
+
+    // ---- NET-02: szélsőséges fejlécértékek nem dobnak kivételt ----
+
+    @Test
+    fun extremeRateLimitHeaders_neverThrow_andTheBlockStaysCapped() {
+        val huge = Long.MAX_VALUE.toString()
+        val tracker = RateLimitTracker(MutableClock(now))
+        tracker.record("github", headersOf("x-ratelimit-limit", "60", "x-ratelimit-remaining", "0", "x-ratelimit-reset", huge))
+        assertNull(tracker.snapshot("github")?.resetAt, "az értelmetlen időpontot nem vesszük át")
+        tracker.record("github", headersOf("x-ratelimit-remaining", "0", "x-ratelimit-reset", "-5"))
+
+        val max = now.plus(RateLimitDecision.MAX_BLOCK)
+        for (headers in listOf(
+            headersOf("Retry-After", huge),
+            headersOf("x-ratelimit-remaining", "0", "x-ratelimit-reset", huge),
+            headersOf("Retry-After", "999999999999"),
+        )) {
+            val until = RateLimitDecision.blockedUntil(429, headers, null, now)
+            assertTrue(until != null && !until.isAfter(max), "$headers -> $until")
+        }
+        assertNull(epochSecondOrNull(Long.MAX_VALUE))
+        assertNull(epochSecondOrNull(Long.MIN_VALUE))
+        assertEquals(now, epochSecondOrNull(now.epochSecond))
+    }
+
+    // ---- NET-03: validátor csak rövid, nyomtatható ASCII lehet ----
+
+    @Test
+    fun safeValidator_acceptsOnlyShortPrintableAscii() {
+        assertEquals("\"abc123\"", safeValidator("\"abc123\""))
+        assertEquals("W/\"x\"", safeValidator("W/\"x\""))
+        assertEquals("Wed, 11 Nov 2026 10:00:00 GMT", safeValidator("Wed, 11 Nov 2026 10:00:00 GMT"))
+        assertNull(safeValidator(null))
+        assertNull(safeValidator(""))
+        assertNull(safeValidator("\"\u00e9\""), "nem ASCII")
+        assertNull(safeValidator("\"a\nb\""), "vezérlőkarakter")
+        assertNull(safeValidator("x".repeat(257)), "túl hosszú")
+    }
 }

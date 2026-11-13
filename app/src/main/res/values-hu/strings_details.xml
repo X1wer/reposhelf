@@ -131,6 +131,7 @@
     <string name="install_success_unverified">Telepítve, de a telepített verziót nem sikerült visszaolvasni az ellenőrzéshez.</string>
     <string name="install_cancelled">A telepítés megszakítva.</string>
     <string name="install_failed">A telepítés nem sikerült: %1$s</string>
+    <string name="install_identity_unconfirmed">A forrásrepó azonossága most nem ellenőrizhető (nincs kapcsolat, elfogyott a kéréskeret, vagy a repó nem érhető el). Biztonsági okból semmit nem töltöttünk le. Próbáld meg később.</string>
     <string name="failure_conflict">az aláírása ütközik a telepített alkalmazáséval</string>
     <string name="failure_invalid">érvénytelen csomag vagy visszalépés</string>
     <string name="failure_incompatible">nem kompatibilis ezzel az eszközzel</string>
@@ -148,6 +149,7 @@
     <string name="dl_host">átirányítás váratlan szerverre</string>
     <string name="dl_http">a fájl nem érhető el a szerveren (%1$s)</string>
     <string name="dl_too_large">a fájl túl nagy</string>
+    <string name="dl_internal">az állomány nem dolgozható fel</string>
 
     <string name="action_open_app">Megnyitás</string>
     <string name="action_app_info">Alkalmazásinformáció</string>

@@ -35,5 +35,12 @@
         <receiver
             android:name=".InstallResultReceiver"
             android:exported="false" />
+
+        <!-- A letöltött APK platform-alapú elemzése külön folyamatban, időkorláttal (D-031): a megbízhatatlan állomány
+             okozta összeomlás vagy megakadás csak ezt a segédfolyamatot érinti. Nem exportált. -->
+        <service
+            android:name=".ApkInspectionService"
+            android:exported="false"
+            android:process=":apkinspect" />
     </application>
 </manifest>

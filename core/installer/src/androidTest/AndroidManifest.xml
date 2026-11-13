@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SPDX-FileCopyrightText: 2026 RepoShelf contributors
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  Csak a műszeres tesztekhez: hibásan viselkedő elemző szolgáltatások külön folyamatban (megakadás, összeomlás),
+  amelyekkel az IsolatedApkInspector időkorlátja és hibatűrése ellenőrizhető.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service
+            android:name="io.github.x1wer.reposhelf.core.installer.HangingInspectionService"
+            android:exported="false"
+            android:process=":hanginspect" />
+        <service
+            android:name="io.github.x1wer.reposhelf.core.installer.CrashingInspectionService"
+            android:exported="false"
+            android:process=":crashinspect" />
+    </application>
+</manifest>

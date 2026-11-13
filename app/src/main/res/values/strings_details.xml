@@ -131,6 +131,7 @@
     <string name="install_success_unverified">Installed, but the installed version could not be read back for checking.</string>
     <string name="install_cancelled">Installation cancelled.</string>
     <string name="install_failed">Installation failed: %1$s</string>
+    <string name="install_identity_unconfirmed">The identity of the source repository could not be checked right now (no connection, the request limit was reached, or the repository is unavailable). For safety, nothing was downloaded. Try again later.</string>
     <string name="failure_conflict">its signature conflicts with the installed app</string>
     <string name="failure_invalid">invalid package or downgrade</string>
     <string name="failure_incompatible">not compatible with this device</string>
@@ -148,6 +149,7 @@
     <string name="dl_host">redirect to an unexpected server</string>
     <string name="dl_http">the file is not available on the server (%1$s)</string>
     <string name="dl_too_large">the file is too large</string>
+    <string name="dl_internal">the file could not be processed</string>
 
     <string name="action_open_app">Open</string>
     <string name="action_app_info">App info</string>

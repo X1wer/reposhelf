@@ -15,6 +15,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.coroutineContext
 
 /** Egy állomány letöltésének leírása. */
@@ -27,7 +29,12 @@ data class DownloadRequest(
     val expectedSize: Long,
 )
 
-enum class DownloadFailure { INSECURE_URL, HOST_NOT_ALLOWED, TOO_MANY_REDIRECTS, INVALID_REDIRECT, HTTP_ERROR, SIZE_MISMATCH, TOO_LARGE, NETWORK }
+enum class DownloadFailure {
+    INSECURE_URL, HOST_NOT_ALLOWED, TOO_MANY_REDIRECTS, INVALID_REDIRECT, HTTP_ERROR, SIZE_MISMATCH, TOO_LARGE, NETWORK,
+
+    /** Váratlan belső hiba az állomány feldolgozása közben (a hívó nem omlik össze; a letöltés sikertelen). */
+    INTERNAL,
+}
 
 sealed interface DownloadResult {
     data class Completed(val file: File, val sha256: String, val size: Long) : DownloadResult
@@ -52,10 +59,14 @@ class FileDownloader(
 ) {
 
     suspend fun download(request: DownloadRequest, onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> }): DownloadResult =
-        withContext(ioDispatcher) { downloadInternal(request, onProgress) }
+        withContext(ioDispatcher) {
+            // Egy célfájlra egyszerre egy letöltés: a felület és a háttérfeladat nem írhatja egyszerre ugyanazt a részfájlt.
+            lockFor(request.target).withLock { downloadInternal(request, onProgress) }
+        }
 
     private suspend fun downloadInternal(request: DownloadRequest, onProgress: (Long, Long) -> Unit): DownloadResult {
-        require(request.expectedSize > 0) { "A várt méret pozitív kell legyen" }
+        // 0 méretű (pl. még fel nem töltött) állomány: nem programhiba, hanem megbízhatatlan bemenet.
+        if (request.expectedSize <= 0) return fail(DownloadFailure.SIZE_MISMATCH, "${request.expectedSize}")
         if (!request.url.isHttps) return fail(DownloadFailure.INSECURE_URL)
         if (!request.policy.isHostAllowed(request.url.host)) return fail(DownloadFailure.HOST_NOT_ALLOWED)
         if (request.expectedSize > request.policy.maxBodyBytes) return fail(DownloadFailure.TOO_LARGE, "${request.expectedSize}")
@@ -68,7 +79,7 @@ class FileDownloader(
             part.delete()
             offset = 0
         }
-        val previousEtag = if (offset > 0) meta.takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() } else null
+        val previousEtag = if (offset > 0) safeValidator(meta.takeIf { it.isFile && it.length() <= 1024 }?.readText()?.trim()) else null
         if (offset > 0 && previousEtag == null) {
             // ETag nélkül nem bizonyítható, hogy a részleges fájl ugyanahhoz a tartalomhoz tartozik: újrakezdjük.
             part.delete()
@@ -97,9 +108,15 @@ class FileDownloader(
                     url = target
                     return@use
                 }
-                val append = r.code == 206 && offset > 0 && contentRangeStart(r.header("Content-Range")) == offset
+                val range = contentRange(r.header("Content-Range"))
+                val responseEtag = safeValidator(r.header("ETag"))
+                // Folytatás csak akkor, ha a szerver pontosan a kért helytől küld, a teljes méret a várt, és (ha közli) a
+                // tartalom ugyanaz, mint amihez a részfájl tartozik. Így két különböző tartalom nem fűzhető össze.
+                val append = r.code == 206 && offset > 0 && range != null && range.first == offset && range.second == request.expectedSize &&
+                    (responseEtag == null || responseEtag == previousEtag)
                 if (!r.isSuccessful || (r.code == 206 && !append)) {
-                    if (r.code == 416) {
+                    if (r.code == 416 || r.code == 206) {
+                        // A részfájl nem folytatható: töröljük, hogy a következő próbálkozás tisztán, elölről induljon.
                         part.delete()
                         meta.delete()
                     }
@@ -110,14 +127,13 @@ class FileDownloader(
                 if (declared >= 0 && startAt + declared != request.expectedSize) {
                     return fail(DownloadFailure.SIZE_MISMATCH, "${startAt + declared} / ${request.expectedSize}", resumable = false)
                 }
-                r.header("ETag")?.let { meta.writeText(it) } ?: meta.delete()
+                // Előbb a régi részfájl törlése, utána az új validátor: fordított sorrendnél egy folyamatleállás régi
+                // bájtokat hagyhatna az ÚJ ETag mellett, és a következő futás hibás tartalomra folytatna.
+                if (!append) part.delete()
+                responseEtag?.let { meta.writeText(it) } ?: meta.delete()
 
                 val digest = MessageDigest.getInstance("SHA-256")
-                if (append) {
-                    part.inputStream().use { input -> updateDigest(digest, input) }
-                } else {
-                    part.delete()
-                }
+                if (append) part.inputStream().use { input -> updateDigest(digest, input) }
                 var written = startAt
                 try {
                     FileOutputStream(part, append).use { out ->
@@ -169,8 +185,13 @@ class FileDownloader(
         }
     }
 
-    private fun contentRangeStart(value: String?): Long? =
-        value?.let { CONTENT_RANGE.find(it)?.groupValues?.get(1)?.toLongOrNull() }
+    /** `bytes <kezdet>-<vég>/<teljes>` → (kezdet, teljes méret); minden más alak (pl. ismeretlen, csillaggal jelölt teljes méret) `null`. */
+    private fun contentRange(value: String?): Pair<Long, Long>? {
+        val groups = value?.let { CONTENT_RANGE.find(it) }?.groupValues ?: return null
+        val start = groups[1].toLongOrNull() ?: return null
+        val total = groups[2].toLongOrNull() ?: return null
+        return start to total
+    }
 
     private fun fail(reason: DownloadFailure, detail: String? = null, resumable: Boolean = false) =
         DownloadResult.Failed(reason, detail, resumable)
@@ -179,7 +200,10 @@ class FileDownloader(
         const val PART_SUFFIX = ".part"
         const val META_SUFFIX = ".part.etag"
         private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
-        private val CONTENT_RANGE = Regex("^bytes (\\d+)-\\d+/\\d+$")
+        private val CONTENT_RANGE = Regex("^bytes (\\d+)-\\d+/(\\d+)$")
+        private val locks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+
+        private fun lockFor(target: File): Mutex = locks.getOrPut(target.absolutePath) { Mutex() }
         private const val BUFFER = 64 * 1024
         private const val PROGRESS_STEP = 256L * 1024
     }

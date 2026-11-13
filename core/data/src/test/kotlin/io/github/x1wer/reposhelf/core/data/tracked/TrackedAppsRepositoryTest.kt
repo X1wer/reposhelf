@@ -360,4 +360,117 @@ class TrackedAppsRepositoryTest {
         repository.recordAnalysis(ref("owner/app"), update, update.assets, listOf(file), report(listOf(Finding(FindingKind.SIGNER_CHANGED, Severity.CRITICAL)), integrityFailed = false))
         assertEquals(UpdateStatus.UPDATE_BLOCKED, repository.checkOne(id)?.status)
     }
+
+    // ---- SIG-01: a repó azonossága a kézi telepítési úton (repojacking első telepítésnél) ----
+
+    @Test
+    fun identityGate_blocksAHijackedCatalogRepo_beforeAnythingIsDownloaded(): Unit = runBlocking {
+        val store = io.github.x1wer.reposhelf.core.data.safety.SecurityWarnings(db, clock)
+        val repo = TrackedAppsRepository(db, ProviderRegistry(listOf(provider)), { installedApps[it] }, { device }, budget, clock, warnings = store)
+        seedCatalog(catalogEntry("aegis", "beemdevelopment/Aegis", 6, "com.beemdevelopment.aegis"))
+        val catalogApp = assertNotNull(db.catalogDao().byId("aegis")?.toModelOrNull())
+        // Az eredeti repó (6) helyén azonos néven egy másik (666) van.
+        publish("beemdevelopment/Aegis", 666, release(1, "v9.9.9", asset(1)))
+
+        // Nem követett katalógusbeli app: a katalógus aláírt azonosítója dönt.
+        val verdict = repo.confirmRepositoryIdentity(catalogApp.repo, catalogApp, trackedId = null)
+        val mismatch = assertIs<io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict.Mismatch>(verdict)
+        assertEquals(ProviderRepoId(6), mismatch.expected)
+        assertEquals(ProviderRepoId(666), mismatch.actual)
+        assertEquals(listOf("repo:beemdevelopment/Aegis"), provider.calls, "csak az azonosság-kérés ment ki, kiadás-lekérés nem")
+        assertTrue(repo.observeAll().first().isEmpty(), "az eltérített azonosítóval nem jött létre sor")
+
+        // Követett sor: megjelölve, kritikus figyelmeztetéssel; az automatikus telepítés tiltva.
+        val id = repo.followCatalogApp(catalogApp)
+        assertIs<io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict.Mismatch>(repo.confirmRepositoryIdentity(catalogApp.repo, catalogApp, id))
+        val row = assertNotNull(repo.get(id))
+        assertEquals(RepoState.ID_CHANGED, row.repoState)
+        assertEquals("6 → 666", row.repoStateDetail)
+        assertEquals(ProviderRepoId(6), row.repoId, "a rögzített azonosító nem íródik át")
+        assertTrue(store.hasBlocking(id))
+
+        // A katalógus aláírtan rögzített azonosítóját a felhasználó elfogadása sem írhatja felül.
+        assertFalse(repo.acceptRepositoryIdentity(id))
+        assertEquals(ProviderRepoId(6), repo.get(id)?.repoId)
+
+        // Ha a néven újra az eredeti repó van, a kapu átenged.
+        publish("beemdevelopment/Aegis", 6, release(1, "v3.4.3", asset(1)))
+        assertIs<io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict.Confirmed>(repo.confirmRepositoryIdentity(catalogApp.repo, catalogApp, id))
+    }
+
+    @Test
+    fun identityGate_unreachableRepo_isUnconfirmed_andUserRepoIsPinnedByTheTrackedRow(): Unit = runBlocking {
+        publish("owner/app", 42, release(10, "v1.0", asset(1)))
+        val id = repository.follow(assertIs(repository.preview("owner/app")))
+        provider.failure = Fetch.Failed(SourceError.Network("offline"))
+        assertIs<io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict.Unconfirmed>(repository.confirmRepositoryIdentity(ref("owner/app"), null, id))
+        provider.failure = null
+        // Saját forrásnál a követett sor korábban rögzített azonosítója az elvárt.
+        provider.repos[ref("owner/app").key] = repo("owner/app", 4242)
+        assertIs<io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict.Mismatch>(repository.confirmRepositoryIdentity(ref("owner/app"), null, id))
+        assertEquals(RepoState.ID_CHANGED, repository.get(id)?.repoState)
+    }
+
+    @Test
+    fun acceptIdentity_onlyAcceptsTheRepoTheUserWasShown(): Unit = runBlocking {
+        publish("owner/app", 42, release(10, "v1.0", asset(1)))
+        val id = repository.follow(assertIs(repository.preview("owner/app")))
+        provider.repos[ref("owner/app").key] = repo("owner/app", 999)
+        assertEquals(UpdateStatus.REPO_ID_CHANGED, repository.checkOne(id)?.status)
+        // A felhasználó a 999-es repót látta, de mire dönt, a néven már egy harmadik (1000) van: a döntés nem érvényes.
+        provider.repos[ref("owner/app").key] = repo("owner/app", 1000)
+        assertFalse(repository.acceptRepositoryIdentity(id, shownRepoId = ProviderRepoId(999)))
+        assertEquals(ProviderRepoId(42), repository.get(id)?.repoId)
+        assertTrue(repository.acceptRepositoryIdentity(id, shownRepoId = ProviderRepoId(1000)))
+        assertEquals(ProviderRepoId(1000), repository.get(id)?.repoId)
+    }
+
+    @Test
+    fun recordInstall_neverStoresAFetchedIdOverTheCatalogId(): Unit = runBlocking {
+        seedCatalog(catalogEntry("aegis", "beemdevelopment/Aegis", 6, "com.beemdevelopment.aegis"))
+        val catalogApp = assertNotNull(db.catalogDao().byId("aegis")?.toModelOrNull())
+        val id = repository.recordInstall(
+            null, catalogApp, catalogApp.repo, repo("beemdevelopment/Aegis", 666), release(1, "v3.4.3", asset(1)),
+            InstallOutcome.Verified("com.beemdevelopment.aegis", 82, "3.4.3", listOf("aa")),
+        )
+        assertEquals(ProviderRepoId(6), repository.get(id)?.repoId)
+    }
+
+    // ---- CAT-05: a katalógusazonosító önmagában nem köti a követett appot a katalógus adataihoz ----
+
+    @Test
+    fun catalogEntryRepointedToAnotherRepo_isNotAppliedToTheTrackedApp(): Unit = runBlocking {
+        seedCatalog(catalogEntry("aegis", "beemdevelopment/Aegis", 6, "com.beemdevelopment.aegis"))
+        val original = assertNotNull(db.catalogDao().byId("aegis")?.toModelOrNull())
+        val id = repository.followCatalogApp(original)
+        val tracked = assertNotNull(repository.get(id))
+        assertEquals("aegis", repository.boundCatalogApp(tracked.catalogId, tracked.repo)?.id)
+        // Katalógusfrissítés: ugyanaz az azonosító most más repóra (és csomagnévre) mutat.
+        seedCatalog(catalogEntry("aegis", "evil/Aegis", 777, "com.evil.aegis"))
+        assertNull(repository.boundCatalogApp(tracked.catalogId, tracked.repo), "a más repóra mutató bejegyzés nem alkalmazható")
+        // A bejegyzés eltűnik a katalógusból: szintén nincs katalógus-adat.
+        seedCatalog()
+        assertNull(repository.boundCatalogApp(tracked.catalogId, tracked.repo))
+    }
+
+    // ---- IMP-02: a telepített alkalmazások ellenőrzése megelőzi a csak követettekét ----
+
+    @Test
+    fun checkAll_checksInstalledAppsFirst_evenWhenManyNeverCheckedReposWereImported(): Unit = runBlocking {
+        publish("owner/installed", 1, release(10, "v1.0", asset(1)))
+        val installedId = repository.follow(assertIs(repository.preview("owner/installed")))
+        installedApps["com.example.installed"] = InstalledAppInfo("com.example.installed", 10, "1.0", listOf("aa"))
+        repository.recordInstall(installedId, null, ref("owner/installed"), null, release(10, "v1.0", asset(1)), InstallOutcome.Verified("com.example.installed", 10, "1.0", listOf("aa")))
+        clock.advance(Duration.ofDays(1))
+        // Importból érkezett, még soha nem ellenőrzött repók (a régi sorrendben ezek kerültek volna előre).
+        val imported = (1..20).map { io.github.x1wer.reposhelf.core.data.transfer.AppListEntry(ref("bulk/repo$it"), null, null, "r$it", followed = true, favorite = false, overrides = null) }
+        assertEquals(20, repository.importList(imported).added)
+
+        provider.calls.clear()
+        budget.limit = 2 // pontosan egy ellenőrzésre elég
+        val summary = repository.checkAll()
+        assertEquals(listOf("repo:owner/installed", "releases:owner/installed"), provider.calls, "a telepített alkalmazás az első")
+        assertEquals(1, summary.checked)
+        assertEquals(20, summary.notChecked)
+    }
 }

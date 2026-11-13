@@ -27,11 +27,21 @@ data class DownloadedApk(
 /** Mi alapján várunk el valamit a letöltött APK-tól. */
 data class VerificationContext(
     val expectedPackageName: String?,
-    /** Rögzített aláíró-ujjlenyomatok: a katalógusból vagy korábbi telepítésből (trust on first use). */
+    /**
+     * A MEGBÍZHATÓ FORRÁSBAN rögzített aláíró-ujjlenyomatok: a katalógus (aláírt) `signingCertSha256` listája, saját
+     * frissítésnél a buildbe fordított aláíró. Ha nem üres, legalább az egyiknek szerepelnie kell az APK ellenőrzött
+     * láncában; ezt a helyben rögzített aláíró ([storedSignerCerts]) egyezése NEM pótolja.
+     */
     val pinnedSignerCerts: List<String>,
     val minVersionCode: Long?,
     val installed: InstalledAppInfo?,
     val device: DeviceProfile,
+    /**
+     * A készüléken korábban rögzített aláíró (első telepítéskor – trust on first use –, vagy a már telepített
+     * példányról), a rotációs lánc sorrendjében: az UTOLSÓ elem a legutóbb érvényes aláíró. Ennek kell szerepelnie az
+     * APK ellenőrzött láncában: egy rotációval lecserélt (visszavont) régi kulcs önmagában nem elég.
+     */
+    val storedSignerCerts: List<String> = emptyList(),
 )
 
 enum class Check { SIZE, SHA256, PROVIDER_DIGEST, APK_STRUCTURE, SIGNATURE, SIGNER_IDENTITY, PACKAGE_NAME, VERSION_CODE, MIN_SDK, TARGET_SDK, ABI, SPLIT_SET }
@@ -269,8 +279,16 @@ class ApkVerifier(private val inspector: ApkInspector) {
         // (v3.1/v3.2 platformfüggés, docs/ARCHITECTURE.md 10.3.).
         val history = signers.history.ifEmpty { signers.current }.map { it.lowercase() }
         var result = SignerIdentity.FIRST_SEEN
-        val installedCurrent = context.installed?.signingHistory?.lastOrNull()?.lowercase()
-        if (installedCurrent != null) {
+        // Minden rendelkezésre álló forrásnak külön-külön teljesülnie kell: a telepített példány, a megbízható forrás
+        // (katalógus / build) és a helyben rögzített aláíró. Egyik egyezése sem pótolja a másik eltérését.
+        val installed = context.installed
+        if (installed != null) {
+            val installedCurrent = installed.signingHistory.lastOrNull()?.lowercase()
+            if (installedCurrent == null) {
+                // A telepített példány aláírója nem olvasható ki: a folytonosság nem igazolható (soha nem „első látás”).
+                findings += Finding(FindingKind.SIGNER_CHANGED, Severity.CRITICAL, "a telepített példány aláírója nem olvasható ki")
+                return SignerIdentity.MISMATCH
+            }
             if (installedCurrent in history) {
                 result = SignerIdentity.MATCHES_INSTALLED
             } else {
@@ -278,14 +296,21 @@ class ApkVerifier(private val inspector: ApkInspector) {
                 return SignerIdentity.MISMATCH
             }
         }
-        val pins = context.pinnedSignerCerts.map { it.lowercase() }
-        if (pins.isNotEmpty()) {
-            if (pins.any { it in history }) {
-                if (result == SignerIdentity.FIRST_SEEN) result = SignerIdentity.MATCHES_PINNED
-            } else {
-                findings += Finding(FindingKind.SIGNER_MISMATCH_PINNED, Severity.CRITICAL)
+        val trusted = context.pinnedSignerCerts.map { it.lowercase() }
+        if (trusted.isNotEmpty()) {
+            if (trusted.none { it in history }) {
+                findings += Finding(FindingKind.SIGNER_MISMATCH_PINNED, Severity.CRITICAL, "katalógus")
                 return SignerIdentity.MISMATCH
             }
+            if (result == SignerIdentity.FIRST_SEEN) result = SignerIdentity.MATCHES_PINNED
+        }
+        val storedCurrent = context.storedSignerCerts.lastOrNull()?.lowercase()
+        if (storedCurrent != null) {
+            if (storedCurrent !in history) {
+                findings += Finding(FindingKind.SIGNER_MISMATCH_PINNED, Severity.CRITICAL, "korábban rögzített aláíró")
+                return SignerIdentity.MISMATCH
+            }
+            if (result == SignerIdentity.FIRST_SEEN) result = SignerIdentity.MATCHES_PINNED
         }
         if (result == SignerIdentity.FIRST_SEEN) {
             findings += Finding(FindingKind.FIRST_SEEN_SIGNER, Severity.INFO)

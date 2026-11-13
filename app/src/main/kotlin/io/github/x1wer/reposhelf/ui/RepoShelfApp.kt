@@ -129,9 +129,9 @@ fun RepoShelfApp(
             modifier = Modifier.weight(1f).consumeWindowInsets(WindowInsets.statusBars),
         ) {
             val openTracked: (TrackedApp) -> Unit = { app ->
-                // Katalógusbeli appnál a katalógus-adatlap (a követés ott is látszik), saját hozzáadásúnál a követett sor.
-                val route = app.catalogId?.let { "$DETAILS_ROUTE/${Uri.encode(it)}" } ?: "$TRACKED_ROUTE/${app.id}"
-                navController.navigate(route)
+                // Mindig a követett sor adatlapja: a katalógusbejegyzést az adatlap csak akkor kapcsolja hozzá, ha az
+                // most is ugyanarra a repóra mutat (a katalógusazonosító önmagában nem azonosítja a repót).
+                navController.navigate("$TRACKED_ROUTE/${app.id}")
             }
             composable(TopLevelDestination.DISCOVER.route) {
                 DiscoverScreen(onOpenApp = { id -> navController.navigate("$DETAILS_ROUTE/${Uri.encode(id)}") })

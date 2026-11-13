@@ -130,4 +130,48 @@ class ReleaseDiscoveryTest {
         assertNull(noApk.value.candidate)
         assertTrue(noApk.findings.any { it.kind == FindingKind.NO_INSTALLABLE_RELEASE && it.detail == "no-apk" })
     }
+
+    // ---- A repó azonosságának megerősítése a letöltés előtt (SIG-01: repojacking első telepítésnél) ----
+
+    @Test
+    fun confirmIdentity_sameId_isConfirmed_withOneRequest() = runTest {
+        provider.byName = { fresh(metadata("owner/app", 42, 7)) }
+        val verdict = assertIs<RepoIdentityVerdict.Confirmed>(discovery.confirmIdentity(ref("owner/app"), listOf(ProviderRepoId(42))))
+        assertEquals(ProviderRepoId(42), verdict.repo.id)
+        assertEquals(false, verdict.firstSeen)
+        assertEquals(listOf("repo:owner/app"), provider.calls)
+    }
+
+    @Test
+    fun confirmIdentity_differentRepoUnderTheSameName_isMismatch() = runTest {
+        // Az eredeti (42) repót törölték, és azonos néven újat (999) hoztak létre.
+        provider.byName = { fresh(metadata("owner/app", 999, 8)) }
+        val verdict = assertIs<RepoIdentityVerdict.Mismatch>(discovery.confirmIdentity(ref("owner/app"), listOf(ProviderRepoId(42))))
+        assertEquals(ProviderRepoId(42), verdict.expected)
+        assertEquals(ProviderRepoId(999), verdict.actual)
+        // Több elvárt azonosító (követett sor + katalógus): mindegyiknek egyeznie kell.
+        assertIs<RepoIdentityVerdict.Mismatch>(discovery.confirmIdentity(ref("owner/app"), listOf(ProviderRepoId(999), ProviderRepoId(42))))
+        assertIs<RepoIdentityVerdict.Confirmed>(discovery.confirmIdentity(ref("owner/app"), listOf(ProviderRepoId(999))))
+    }
+
+    @Test
+    fun confirmIdentity_withoutExpectedId_isFirstSeen() = runTest {
+        provider.byName = { fresh(metadata("owner/app", 42, 7)) }
+        assertEquals(true, assertIs<RepoIdentityVerdict.Confirmed>(discovery.confirmIdentity(ref("owner/app"), emptyList())).firstSeen)
+    }
+
+    @Test
+    fun confirmIdentity_whenTheRepoCannotBeFetched_isNeverConfirmed() = runTest {
+        val expected = listOf(ProviderRepoId(42))
+        provider.byName = { Fetch.NotFound }
+        assertEquals(UpdateFailure.RepoNotFound, assertIs<RepoIdentityVerdict.Unconfirmed>(discovery.confirmIdentity(ref("owner/app"), expected)).failure)
+        // A stabil azonosító szerinti tartalék-keresés itt NEM fut: a kiadások név szerint jönnek, a névnek kell stimmelnie.
+        assertEquals(listOf("repo:owner/app"), provider.calls)
+        provider.byName = { Fetch.RateLimited(Instant.parse("2026-11-13T10:00:00Z")) }
+        assertIs<UpdateFailure.RateLimited>(assertIs<RepoIdentityVerdict.Unconfirmed>(discovery.confirmIdentity(ref("owner/app"), expected)).failure)
+        provider.byName = { Fetch.Failed(SourceError.Network("timeout")) }
+        assertIs<UpdateFailure.Network>(assertIs<RepoIdentityVerdict.Unconfirmed>(discovery.confirmIdentity(ref("owner/app"), expected)).failure)
+        provider.byName = { Fetch.Unavailable(UnavailableReason.ACCESS_BLOCKED) }
+        assertIs<UpdateFailure.RepoUnavailable>(assertIs<RepoIdentityVerdict.Unconfirmed>(discovery.confirmIdentity(ref("owner/app"), emptyList())).failure)
+    }
 }

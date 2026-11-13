@@ -108,5 +108,12 @@ data class CheckSummary(
     val resumesAt: Instant?,
 )
 
-/** Az import eredménye (C. 25.): új és frissített alkalmazások, és hány automatikus telepítés-beállítást nem vettünk át. */
-data class ImportSummary(val added: Int, val updated: Int, val autoInstallNotImported: Int)
+/**
+ * Az import eredménye (C. 25.): új és már meglévő alkalmazások; hány új alkalmazásnál nem vettünk át automatizmust
+ * bekapcsoló beállítást (automatikus telepítés / letöltés, előzetes kiadások); hány meglévő alkalmazás beállításai
+ * maradtak változatlanok, bár a fájl mást tartalmazott.
+ */
+data class ImportSummary(val added: Int, val updated: Int, val automationNotImported: Int, val existingSettingsKept: Int = 0)
+
+/** Az import előnézete megerősítéshez: már a listán lévők, új katalógusbeli appok, új saját források (repó-útvonalak). */
+data class ImportPreview(val existing: Int, val newFromCatalog: Int, val newOwnSources: List<String>)

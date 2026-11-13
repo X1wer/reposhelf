@@ -4,6 +4,8 @@
 package io.github.x1wer.reposhelf.core.network
 
 import io.github.x1wer.reposhelf.core.network.testing.HttpsTestServer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.SocketEffect
@@ -164,4 +166,135 @@ class FileDownloaderTest {
     }
 
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    // ---- NET-01: az állományletöltésre nincs teljes hívás-időkorlát (csak inaktivitási) ----
+
+    @Test
+    fun slowButSteadyDownload_isNotCutByTheCallTimeout() = runBlocking {
+        val base = HttpClients.create("RepoShelf-Test/1") {
+            https.trustTestCertificate(this)
+            callTimeout(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+        fun slow() = MockResponse.Builder().code(200).body(body(content)).throttleBody(60_000, 250, java.util.concurrent.TimeUnit.MILLISECONDS).build()
+        // A metaadat-kliens (rövid teljes időkorláttal) a kb. 1,2 mp-es letöltést megszakítaná.
+        server.enqueue(slow())
+        val cut = assertIs<DownloadResult.Failed>(FileDownloader(base).download(request()))
+        assertEquals(DownloadFailure.NETWORK, cut.reason)
+        File(target().path + FileDownloader.PART_SUFFIX).delete()
+        // A letöltőkliensen nincs teljes időkorlát, az olvasási (inaktivitási) korlát megmarad.
+        val downloads = HttpClients.forDownloads(base)
+        assertEquals(0, downloads.callTimeoutMillis)
+        assertEquals(base.readTimeoutMillis, downloads.readTimeoutMillis)
+        assertEquals(base.connectTimeoutMillis, downloads.connectTimeoutMillis)
+        server.enqueue(slow())
+        val done = assertIs<DownloadResult.Completed>(FileDownloader(downloads).download(request()))
+        assertEquals(contentSha, done.sha256)
+    }
+
+    // ---- DL-02: a folytatás csak ugyanarra a tartalomra és a várt teljes méretre fogadható el ----
+
+    private fun leavePartial(bytes: Int, etag: String): File {
+        val part = File(target().path + FileDownloader.PART_SUFFIX)
+        part.parentFile!!.mkdirs()
+        part.writeBytes(content.copyOf(bytes))
+        File(target().path + FileDownloader.META_SUFFIX).writeText(etag)
+        return part
+    }
+
+    @Test
+    fun resume_isRejected_whenTheServerAnswersWithDifferentContentOrSize() = runBlocking {
+        val half = 1000
+        val etag = "\"blob1\""
+        // Más ETag a 206-os válaszban: a szerver nem ugyanazt a tartalmat folytatja.
+        var part = leavePartial(half, etag)
+        server.enqueue(
+            MockResponse.Builder().code(206).body(body(content.copyOfRange(half, content.size)))
+                .addHeader("Content-Range", "bytes $half-${content.size - 1}/${content.size}").addHeader("ETag", "\"blob2\"").build(),
+        )
+        val otherContent = assertIs<DownloadResult.Failed>(downloader.download(request()))
+        assertEquals(DownloadFailure.HTTP_ERROR, otherContent.reason)
+        assertFalse(otherContent.resumable)
+        assertFalse(part.exists(), "a nem folytatható részfájl törlődik")
+        assertFalse(File(target().path + FileDownloader.META_SUFFIX).exists())
+        assertFalse(target().exists())
+
+        // Más teljes méret a Content-Range-ben.
+        part = leavePartial(half, etag)
+        server.enqueue(
+            MockResponse.Builder().code(206).body(body(content.copyOfRange(half, content.size)))
+                .addHeader("Content-Range", "bytes $half-${content.size - 1}/${content.size + 5}").addHeader("ETag", etag).build(),
+        )
+        assertEquals(DownloadFailure.HTTP_ERROR, assertIs<DownloadResult.Failed>(downloader.download(request())).reason)
+        assertFalse(part.exists())
+
+        // Ismeretlen teljes méret ("/*").
+        part = leavePartial(half, etag)
+        server.enqueue(
+            MockResponse.Builder().code(206).body(body(content.copyOfRange(half, content.size)))
+                .addHeader("Content-Range", "bytes $half-${content.size - 1}/*").addHeader("ETag", etag).build(),
+        )
+        assertEquals(DownloadFailure.HTTP_ERROR, assertIs<DownloadResult.Failed>(downloader.download(request())).reason)
+        assertFalse(part.exists())
+
+        // A következő próbálkozás tisztán, elölről indul (Range nélkül), és sikerül.
+        repeat(3) { server.takeRequest() }
+        server.enqueue(MockResponse.Builder().code(200).body(body(content)).build())
+        val clean = assertIs<DownloadResult.Completed>(downloader.download(request()))
+        assertEquals(contentSha, clean.sha256)
+        assertNull(server.takeRequest().headers["Range"])
+    }
+
+    // ---- NET-03: a nem ASCII / túl hosszú validátor olyan, mintha nem lenne ----
+
+    @Test
+    fun unsafeStoredEtag_isIgnored_andTheDownloadRestartsWithoutThrowing() = runBlocking {
+        leavePartial(1000, "\"\u00e9\u0007\"")
+        server.enqueue(MockResponse.Builder().code(200).body(body(content)).build())
+        val result = assertIs<DownloadResult.Completed>(downloader.download(request()))
+        assertEquals(contentSha, result.sha256)
+        val recorded = server.takeRequest()
+        assertNull(recorded.headers["Range"])
+        assertNull(recorded.headers["If-Range"])
+    }
+
+    // ---- DL-04: a 0 méretű állomány megbízhatatlan bemenet, nem programhiba ----
+
+    @Test
+    fun zeroSizedAsset_isAFailure_notAnException() = runBlocking {
+        val result = assertIs<DownloadResult.Failed>(downloader.download(request(expected = 0)))
+        assertEquals(DownloadFailure.SIZE_MISMATCH, result.reason)
+        assertEquals(0, server.requestCount)
+    }
+
+    // ---- DL-03: ugyanarra a célfájlra egyszerre csak egy letöltés fut ----
+
+    @Test
+    fun concurrentDownloadsOfTheSameTarget_doNotCorruptEachOther() = runBlocking {
+        repeat(2) {
+            server.enqueue(MockResponse.Builder().code(200).body(body(content)).throttleBody(100_000, 50, java.util.concurrent.TimeUnit.MILLISECONDS).build())
+        }
+        val results = listOf(
+            async(Dispatchers.IO) { downloader.download(request()) },
+            async(Dispatchers.IO) { downloader.download(request()) },
+        ).map { it.await() }
+        results.forEach { assertEquals(contentSha, assertIs<DownloadResult.Completed>(it).sha256) }
+        assertEquals(contentSha, sha256(target().readBytes()), "a lemezen lévő fájl a jelentett tartalom")
+        assertFalse(File(target().path + FileDownloader.PART_SUFFIX).exists())
+    }
+
+    // ---- MD-04: a képek mérethatára a ténylegesen beolvasott bájtokra érvényes ----
+
+    @Test
+    fun imageBodyLimit_appliesToBytesActuallyRead_notOnlyToTheDeclaredLength() {
+        val client = okhttp3.OkHttpClient.Builder().apply { https.trustTestCertificate(this) }.addInterceptor(ImageBodyLimitInterceptor).build()
+        val tooBig = ByteArray((ImageHttpClient.MAX_IMAGE_BYTES + 64 * 1024).toInt())
+        // Content-Length nélküli válasz: a deklarált hossz ellenőrzése nem fogná meg.
+        server.enqueue(MockResponse.Builder().code(200).body(body(tooBig)).removeHeader("Content-Length").build())
+        val failure = kotlin.runCatching { client.newCall(okhttp3.Request.Builder().url(server.url("/big.png")).build()).execute().use { it.body.bytes() } }
+        assertTrue(failure.exceptionOrNull() is java.io.IOException, failure.toString())
+        server.enqueue(MockResponse.Builder().code(200).body(body(content)).removeHeader("Content-Length").build())
+        val ok = client.newCall(okhttp3.Request.Builder().url(server.url("/small.png")).build()).execute().use { it.body.bytes() }
+        assertEquals(content.size, ok.size, "a kis kép teljes egészében megérkezik")
+        assertTrue(ok.contentEquals(content))
+    }
 }

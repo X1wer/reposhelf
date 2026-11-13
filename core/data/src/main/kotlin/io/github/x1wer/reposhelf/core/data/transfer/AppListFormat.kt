@@ -61,7 +61,11 @@ object AppListFormat {
     const val FORMAT = "reposhelf-app-list"
     const val VERSION = 1
     const val MAX_BYTES = 1024 * 1024
-    const val MAX_ENTRIES = 5000
+    /** Egy import legfeljebb ennyi bejegyzést tartalmazhat (a névtelen API-keret mellett ennél több nem is követhető érdemben). */
+    const val MAX_ENTRIES = 500
+
+    /** Az érvényes lista 4 szint mély (gyökér → apps → bejegyzés → source / settings); ennél jóval mélyebb fájl hibás. */
+    private const val MAX_DEPTH = 8
     private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
     private val pretty = Json { prettyPrint = true }
 
@@ -106,8 +110,11 @@ object AppListFormat {
 
     fun decode(bytes: ByteArray): AppListDecodeResult {
         if (bytes.size > MAX_BYTES) return AppListDecodeResult.Invalid(AppListDecodeResult.Invalid.Reason.TOO_LARGE)
+        val text = String(bytes, Charsets.UTF_8)
+        // A túl mélyen egymásba ágyazott szerkezet a feldolgozó rekurzióját merítené ki: még a feldolgozás előtt elutasítjuk.
+        if (exceedsDepth(text, MAX_DEPTH)) return AppListDecodeResult.Invalid(AppListDecodeResult.Invalid.Reason.MALFORMED)
         val root = try {
-            Json.parseToJsonElement(String(bytes, Charsets.UTF_8)) as? JsonObject
+            Json.parseToJsonElement(text) as? JsonObject
         } catch (_: SerializationException) {
             null
         } catch (_: IllegalArgumentException) {
@@ -131,6 +138,29 @@ object AppListFormat {
         return AppListDecodeResult.Decoded(entries, skipped)
     }
 
+    /** A JSON beágyazási mélysége meghaladja-e a korlátot (a karakterláncokon belüli zárójelek nem számítanak). */
+    internal fun exceedsDepth(text: String, limit: Int): Boolean {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (c in text) {
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+                continue
+            }
+            when (c) {
+                '"' -> inString = true
+                '{', '[' -> if (++depth > limit) return true
+                '}', ']' -> depth--
+            }
+        }
+        return false
+    }
+
     private sealed interface Result {
         data class Ok(val entry: AppListEntry) : Result
         data class Bad(val reason: String) : Result
@@ -150,7 +180,8 @@ object AppListFormat {
             else -> obj.string("catalogId")?.takeIf { CATALOG_ID.matches(it) } ?: return Result.Bad("catalogId")
         }
         val name = (obj.string("name") ?: repo.name).trim()
-        if (name.isEmpty() || name.length > 100 || name.any { it.isISOControl() }) return Result.Bad("name")
+        // Vezérlő- és formázó karakter (pl. irányváltó, nulla szélességű) nem lehet a névben.
+        if (name.isEmpty() || name.length > 100 || name.any { it.isISOControl() || Character.getType(it) == Character.FORMAT.toInt() }) return Result.Bad("name")
         val followed = obj.bool("followed") ?: return Result.Bad("followed")
         val favorite = obj.bool("favorite") ?: false
         if (!followed && !favorite) return Result.Bad("neither followed nor favorite")

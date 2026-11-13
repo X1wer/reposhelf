@@ -5,6 +5,7 @@ package io.github.x1wer.reposhelf.core.update
 
 import io.github.x1wer.reposhelf.core.apk.AssetRejection
 import io.github.x1wer.reposhelf.core.apk.AssetSelection
+import io.github.x1wer.reposhelf.core.apk.SignerIdentity
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
 import io.github.x1wer.reposhelf.core.model.Finding
 import io.github.x1wer.reposhelf.core.model.FindingKind
@@ -107,13 +108,17 @@ object WarningClassifier {
      * HIBÁTLANUL átment állomány megszüntet. Így egy elutasított kiadás nem tiltja örökre az automatikus telepítést;
      * az elutasított kiadás maga továbbra sem települ (az elemzése elutasítottként megmarad).
      */
-    fun resolvedByReport(report: VerificationReport): Set<WarningCategory> =
-        if (!report.isInstallable) {
-            emptySet()
-        } else {
-            val present = fromReport(report).map { it.category }.toSet()
-            RELEASE_BOUND.filterNot { it in present }.toSet()
-        }
+    fun resolvedByReport(report: VerificationReport): Set<WarningCategory> {
+        if (!report.isInstallable) return emptySet()
+        // Az azonos verziójú állomány (pl. a már telepített APK újabb címkével közzétéve) semmit nem bizonyít: a
+        // kiadásokat a repó birtokosa (kompromittált fióknál a támadó) adja meg, ezért ez nem oldhat fel riasztást.
+        if (report.findings.any { it.kind == FindingKind.SAME_VERSION }) return emptySet()
+        val present = fromReport(report).map { it.category }.toSet()
+        // Az aláíróra, a csomagnévre és a verziókódra vonatkozó esetet csak IGAZOLT azonosságú állomány oldja fel
+        // (a telepített példánnyal vagy a rögzített aláíróval egyező); a sérült letöltést bármely ép állomány.
+        val identityProven = report.identity == SignerIdentity.MATCHES_INSTALLED || report.identity == SignerIdentity.MATCHES_PINNED
+        return RELEASE_BOUND.filter { it !in present && (it == WarningCategory.CORRUPTED || identityProven) }.toSet()
+    }
 
     private val RELEASE_BOUND = listOf(WarningCategory.SIGNER_CHANGED, WarningCategory.PACKAGE_CHANGED, WarningCategory.DOWNGRADE, WarningCategory.CORRUPTED)
 

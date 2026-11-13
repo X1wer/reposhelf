@@ -102,13 +102,14 @@ class AppListTransferTest {
         newDb.seedCatalog(aegis)
         installedLookups = 0
         val decoded = assertIs<AppListDecodeResult.Decoded>(AppListFormat.decode(bytes))
-        assertEquals(ImportSummary(added = 1, updated = 0, autoInstallNotImported = 0), fresh.importList(decoded.entries))
+        // Az automatikus letöltés (mint minden automatizmus) importból nem kapcsolódik be; a többi beállítás átjön.
+        assertEquals(ImportSummary(added = 1, updated = 0, automationNotImported = 1), fresh.importList(decoded.entries))
 
         val app = fresh.observeAll().first().single()
         assertEquals(AppOrigin.CATALOG, app.origin)
         assertEquals("aegis", app.catalogId)
         assertTrue(app.isFollowed && app.isFavorite)
-        assertEquals(AppOverrides(includePrereleases = false, autoDownload = true, releaseDelayDays = 3), app.overrides)
+        assertEquals(AppOverrides(includePrereleases = false, releaseDelayDays = 3), app.overrides)
         assertEquals(0, newProvider.calls, "az import nem kér le semmit a hálózatról")
         assertEquals(0, installedLookups, "az import nem nyúl a telepítéshez")
         assertNull(app.lastCheckAt)
@@ -126,16 +127,19 @@ class AppListTransferTest {
         val (db, repo) = device(CountingProvider())
         db.seedCatalog(aegis)
         val decoded = assertIs<AppListDecodeResult.Decoded>(AppListFormat.decode(file))
-        assertEquals(ImportSummary(added = 2, updated = 0, autoInstallNotImported = 1), repo.importList(decoded.entries))
+        assertEquals(ImportSummary(added = 2, updated = 0, automationNotImported = 1), repo.importList(decoded.entries))
         val apps = repo.observeAll().first().associateBy { it.repo.path }
         val libre = apps.getValue("libre-tube/LibreTube")
         assertEquals(AppOrigin.USER, libre.origin)
-        assertEquals(42L, libre.repoId?.value)
+        // A stabil azonosítót nem a fájlból vesszük: az első ellenőrzés rögzíti a név alapján (IMP-03).
+        assertNull(libre.repoId)
         assertEquals(AppOverrides(notify = false), libre.overrides, "az automatikus telepítés nem kapcsolódott be")
         // A katalógusazonosító csak akkor érvényes, ha a helyi katalógusban ugyanarra a repóra mutat.
         val fake = apps.getValue("evil/Aegis")
         assertEquals(AppOrigin.USER, fake.origin)
         assertNull(fake.catalogId)
+        // A megjelenített név a repó neve, nem a fájlban megadott szöveg (IMP-04).
+        assertEquals("Aegis", fake.displayName)
     }
 
     @Test
@@ -173,5 +177,101 @@ class AppListTransferTest {
         assertEquals(listOf("o/a"), result.entries.map { it.repo.path })
         assertEquals(bad.size, result.skipped.size, "minden hibás bejegyzés kimarad, okkal")
         assertEquals("duplicate", result.skipped.last().reason)
+    }
+
+    // ---- IMP-01: az import nem írja felül a MÁR követett alkalmazások beállításait ----
+
+    @Test
+    fun import_neverChangesSettingsOfAppsAlreadyOnTheList(): Unit = runBlocking {
+        val (db, repo) = device(CountingProvider())
+        db.seedCatalog(aegis)
+        val id = repo.followCatalogApp(aegis)
+        val mine = AppOverrides(checkEnabled = true, autoInstall = true, releaseDelayDays = 7)
+        repo.setOverrides(id, mine)
+        val hostile = AppOverrides(checkEnabled = false, notify = false, includePrereleases = true, autoDownload = true, releaseDelayDays = 0)
+        val entries = listOf(
+            // Ugyanaz a repó útvonal szerint…
+            AppListEntry(aegis.repo, null, "aegis", "Aegis", followed = true, favorite = true, overrides = hostile),
+        )
+        assertEquals(ImportSummary(added = 0, updated = 1, automationNotImported = 0, existingSettingsKept = 1), repo.importList(entries))
+        // …és csak a stabil azonosító szerint, megtévesztő útvonallal.
+        val decoy = AppListEntry(RepoRef(ProviderId.GITHUB, "decoy", "name"), aegis.repositoryId?.value, null, "x", followed = true, favorite = false, overrides = hostile)
+        assertEquals(ImportSummary(0, 1, 0, 1), repo.importList(listOf(decoy)))
+        val app = repo.observeAll().first().single()
+        assertEquals(mine, app.overrides, "a meglévő beállítások változatlanok")
+        assertTrue(app.checkEnabled, "a frissítésellenőrzést egy importfájl nem kapcsolhatja ki")
+        assertTrue(app.isFavorite, "a kedvenc bekapcsolódhat")
+    }
+
+    @Test
+    fun import_neverTurnsOnAutomationForNewApps_butKeepsRestrictiveSettings(): Unit = runBlocking {
+        val (_, repo) = device(CountingProvider())
+        val entry = AppListEntry(
+            RepoRef(ProviderId.GITHUB, "owner", "app"), 42, null, "App", followed = true, favorite = false,
+            overrides = AppOverrides(checkEnabled = true, includePrereleases = true, autoDownload = true, autoInstall = true, notify = false, releaseDelayDays = 3),
+        )
+        assertEquals(ImportSummary(1, 0, 1, 0), repo.importList(listOf(entry)))
+        assertEquals(AppOverrides(checkEnabled = true, notify = false, releaseDelayDays = 3), repo.observeAll().first().single().overrides)
+        // A kifejezetten KIkapcsolt automatizmus (szigorúbb beállítás) átjön.
+        val strict = AppListEntry(
+            RepoRef(ProviderId.GITHUB, "owner", "strict"), null, null, "S", followed = true, favorite = false,
+            overrides = AppOverrides(autoDownload = false, autoInstall = false, includePrereleases = false),
+        )
+        assertEquals(ImportSummary(1, 0, 0, 0), repo.importList(listOf(strict)))
+        val imported = repo.observeAll().first().first { it.repo.path == "owner/strict" }
+        assertEquals(AppOverrides(autoDownload = false, autoInstall = false, includePrereleases = false), imported.overrides)
+    }
+
+    // ---- IMP-02: előnézet megerősítéshez, kisebb bejegyzéskorlát ----
+
+    @Test
+    fun preview_listsNewOwnSources_withoutWritingAnything(): Unit = runBlocking {
+        val provider = CountingProvider()
+        val (db, repo) = device(provider)
+        db.seedCatalog(aegis)
+        val mine = AppListEntry(RepoRef(ProviderId.GITHUB, "mine", "already"), null, null, "x", followed = true, favorite = false, overrides = null)
+        repo.importList(listOf(mine))
+        val entries = listOf(
+            AppListEntry(aegis.repo, null, "aegis", "Aegis", followed = true, favorite = false, overrides = null),
+            mine,
+            AppListEntry(RepoRef(ProviderId.GITHUB, "stranger", "tool"), null, null, "Tool", followed = true, favorite = false, overrides = null),
+            AppListEntry(RepoRef(ProviderId.GITHUB, "evil", "Aegis"), null, "aegis", "Aegis", followed = true, favorite = false, overrides = null),
+        )
+        val before = repo.observeAll().first().size
+        val preview = repo.previewImport(entries)
+        assertEquals(1, preview.existing)
+        assertEquals(1, preview.newFromCatalog)
+        assertEquals(listOf("stranger/tool", "evil/Aegis"), preview.newOwnSources, "a más repóra mutató katalógusazonosító saját forrásnak számít")
+        assertEquals(before, repo.observeAll().first().size, "az előnézet semmit nem ír")
+        assertEquals(0, provider.calls)
+    }
+
+    @Test
+    fun decode_rejectsTooManyEntries_deepNesting_andFormatCharactersInNames() {
+        fun decode(text: String) = AppListFormat.decode(text.toByteArray())
+        val one = { i: Int -> """{"source":{"provider":"github","repository":"o/r$i"},"followed":true}""" }
+        val atLimit = (1..AppListFormat.MAX_ENTRIES).joinToString(",", transform = one)
+        assertEquals(AppListFormat.MAX_ENTRIES, assertIs<AppListDecodeResult.Decoded>(decode("""{"format":"reposhelf-app-list","version":1,"apps":[$atLimit]}""")).entries.size)
+        val overLimit = (1..AppListFormat.MAX_ENTRIES + 1).joinToString(",", transform = one)
+        assertEquals(
+            AppListDecodeResult.Invalid(AppListDecodeResult.Invalid.Reason.TOO_MANY_ENTRIES),
+            decode("""{"format":"reposhelf-app-list","version":1,"apps":[$overLimit]}"""),
+        )
+        // Mélyen egymásba ágyazott tömbök / objektumok: elutasítás kivétel (verem-túlcsordulás) nélkül.
+        val malformed = AppListDecodeResult.Invalid(AppListDecodeResult.Invalid.Reason.MALFORMED)
+        assertEquals(malformed, decode("""{"format":"reposhelf-app-list","version":1,"apps":""" + "[".repeat(300_000)))
+        assertEquals(malformed, decode("""{"format":"reposhelf-app-list","version":1,"apps":""" + """{"a":""".repeat(100_000)))
+        // A karakterláncon belüli zárójelek nem számítanak a mélységbe.
+        val brackets = "[{".repeat(50)
+        val named = """{"format":"reposhelf-app-list","version":1,"apps":[{"source":{"provider":"github","repository":"o/a"},"name":"$brackets","followed":true}]}"""
+        assertEquals(1, assertIs<AppListDecodeResult.Decoded>(decode(named)).entries.size)
+        assertTrue(AppListFormat.exceedsDepth("[[[[", 3))
+        assertTrue(!AppListFormat.exceedsDepth("[\"[[[[[[\", \"\\\"[[[[\"]", 3), "idézőjelen belül, kiléptetett idézőjellel")
+        // Irányváltó és nulla szélességű karakter a névben: a bejegyzés kimarad.
+        for (hidden in listOf("\\u202E", "\\u200B", "\\u2066")) {
+            val spoofed = """{"format":"reposhelf-app-list","version":1,"apps":[{"source":{"provider":"github","repository":"o/a"},"name":"Signal$hidden","followed":true}]}"""
+            val result = assertIs<AppListDecodeResult.Decoded>(decode(spoofed))
+            assertTrue(result.entries.isEmpty() && result.skipped.single().reason == "name", hidden)
+        }
     }
 }

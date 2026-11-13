@@ -15,6 +15,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -45,7 +46,8 @@ class ApkVerifierTest {
         installed: InstalledAppInfo? = null,
         device: DeviceProfile = x86Device,
         minVersionCode: Long? = null,
-    ) = VerificationContext(expectedPackage, pins, minVersionCode, installed, device)
+        stored: List<String> = emptyList(),
+    ) = VerificationContext(expectedPackage, pins, minVersionCode, installed, device, stored)
 
     private fun certOf(name: String): String =
         assertIs<ApkInspection.Valid>(inspector.inspect(fixture(name))).facts.signers.current.single()
@@ -210,5 +212,65 @@ class ApkVerifierTest {
         assertEquals(24, ApkVerifier.minimumInstallableTargetSdk(37))
         assertEquals(23, ApkVerifier.minimumInstallableTargetSdk(34))
         assertEquals(0, ApkVerifier.minimumInstallableTargetSdk(28))
+    }
+
+    // ---- SIG-02: a megbízható forrás (katalógus) és a helyben rögzített aláíró KÜLÖN feltétel ----
+
+    @Test
+    fun storedPinAfterRotation_doesNotAcceptTheRetiredKeyAlone() {
+        // Korábban A → B rotációval telepítve: a rögzített lánc [A, B], a legutóbb érvényes aláíró B.
+        val stored = listOf(certA, certB)
+        // Az app most nincs telepítve; egy csak a VISSZAVONT (A) kulccsal aláírt APK nem fogadható el.
+        val retired = verifier.verify(listOf(downloaded(fixture("fixture-v2-keyA.apk"))), context(stored = stored))
+        assertEquals(SignerIdentity.MISMATCH, retired.identity)
+        assertTrue(FindingKind.SIGNER_MISMATCH_PINNED in kinds(retired))
+        assertFalse(retired.isInstallable)
+        // A jelenlegi kulccsal (B) aláírt és az érvényes rotációs láncú APK elfogadható.
+        assertEquals(SignerIdentity.MATCHES_PINNED, verifier.verify(listOf(downloaded(fixture("fixture-v2-keyB.apk"))), context(stored = stored)).identity)
+        assertEquals(SignerIdentity.MATCHES_PINNED, verifier.verify(listOf(downloaded(fixture("fixture-v3-rotatedAtoB.apk"))), context(stored = stored)).identity)
+        // Rotáció előtti rögzítés ([A]) mellett a szabályosan A → B-re rotált APK folytonos.
+        assertEquals(SignerIdentity.MATCHES_PINNED, verifier.verify(listOf(downloaded(fixture("fixture-v3-rotatedAtoB.apk"))), context(stored = listOf(certA))).identity)
+    }
+
+    @Test
+    fun catalogPin_cannotBeBypassedByALocalPin_andViceVersa() {
+        val apkA = listOf(downloaded(fixture("fixture-v2-keyA.apk")))
+        // A katalógus B-t rögzít, helyben A van rögzítve: az A-val aláírt APK NEM „egyezik a rögzítettel”.
+        val catalogWins = verifier.verify(apkA, context(pins = listOf(certB), stored = listOf(certA)))
+        assertEquals(SignerIdentity.MISMATCH, catalogWins.identity)
+        assertTrue(FindingKind.SIGNER_MISMATCH_PINNED in kinds(catalogWins))
+        // Fordítva: a katalógus A-t enged, de helyben B van rögzítve.
+        val storedWins = verifier.verify(apkA, context(pins = listOf(certA), stored = listOf(certB)))
+        assertEquals(SignerIdentity.MISMATCH, storedWins.identity)
+        // A telepített példány egyezése sem pótolja a katalógus eltérését.
+        val installedOnly = verifier.verify(apkA, context(pins = listOf(certB), installed = installedV(1, certA)))
+        assertEquals(SignerIdentity.MISMATCH, installedOnly.identity)
+        assertFalse(installedOnly.isInstallable)
+        // Ha minden forrás egyezik: telepíthető.
+        val allAgree = verifier.verify(apkA, context(pins = listOf(certA), stored = listOf(certA), installed = installedV(1, certA)))
+        assertEquals(SignerIdentity.MATCHES_INSTALLED, allAgree.identity)
+        assertTrue(allAgree.isInstallable, allAgree.findings.toString())
+    }
+
+    // ---- SIG-05: ha a telepített példány aláírója nem olvasható ki, az soha nem „első látás” ----
+
+    @Test
+    fun installedAppWithoutReadableSigner_isAMismatch_notFirstSeen() {
+        val unreadable = InstalledAppInfo("io.github.x1wer.fixture", 1, "1.0", emptyList())
+        val report = verifier.verify(listOf(downloaded(fixture("fixture-v2-keyA.apk"))), context(installed = unreadable))
+        assertEquals(SignerIdentity.MISMATCH, report.identity)
+        assertTrue(FindingKind.SIGNER_CHANGED in kinds(report))
+        assertFalse(report.isInstallable)
+    }
+
+    // ---- DL-04: a hibás ZIP soha nem dob kivételt ----
+
+    @Test
+    fun garbageFile_isInvalidApk_withoutException() {
+        val garbage = temp.newFile("garbage.apk").apply { writeBytes(ByteArray(4096) { (it * 31).toByte() }) }
+        assertNull(ZipInspector.inspect(garbage))
+        val report = verifier.verify(listOf(downloaded(garbage)), context())
+        assertTrue(FindingKind.INVALID_APK in kinds(report))
+        assertFalse(report.isInstallable)
     }
 }

@@ -118,6 +118,7 @@
     <string name="repo_state_renamed">The repository was renamed; RepoShelf follows the new name.</string>
     <string name="repo_state_owner_changed">The repository now belongs to a different owner. Make sure this is expected before updating.</string>
     <string name="repo_state_id_changed">A different repository now exists under this name (the original was deleted or renamed). Installing and updating are blocked until you decide.</string>
+    <string name="repo_state_pinned_by_catalog">The catalog records which repository this app comes from, so this cannot be overridden here. Nothing is downloaded or installed from the other repository. If the project really moved, the catalog has to be updated first.</string>
     <string name="repo_state_not_found">The repository can no longer be found. The installed app is not affected.</string>
     <string name="repo_state_unavailable">The repository is unavailable (for example, blocked).</string>
     <string name="repo_state_accept_note">Accept only if you trust the new repository. The signer check stays in force: an app signed with a different key will still not be installed.</string>

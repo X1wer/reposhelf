@@ -188,4 +188,22 @@ class GitHubProviderTest {
         assertNull(GitHubProvider.parseDigest("sha512:" + "a".repeat(64)))
         assertNull(GitHubProvider.parseDigest(null))
     }
+
+    // ---- DL-04: 0 méretű vagy még fel nem töltött asset nem telepíthető állomány ----
+
+    @Test
+    fun releases_dropZeroSizedAndNotYetUploadedAssets() = runBlocking {
+        val body = """
+            [{"id":1,"tag_name":"v1.0","draft":false,"prerelease":false,"published_at":"2026-11-01T10:00:00Z",
+              "assets":[
+                {"id":21,"name":"empty.apk","size":0,"browser_download_url":"https://github.com/a/b/empty.apk","state":"uploaded"},
+                {"id":22,"name":"starter.apk","size":10,"browser_download_url":"https://github.com/a/b/starter.apk","state":"starter"},
+                {"id":23,"name":"negative.apk","size":-1,"browser_download_url":"https://github.com/a/b/negative.apk"},
+                {"id":24,"name":"good.apk","size":10,"browser_download_url":"https://github.com/a/b/good.apk","state":"uploaded"}
+              ]}]
+        """.trimIndent()
+        https.server.enqueue(json(200, body))
+        val fresh = assertIs<Fetch.Fresh<List<io.github.x1wer.reposhelf.core.model.Release>>>(provider.releases(repo, limit = 10))
+        assertEquals(listOf(24L), fresh.value.single().assets.map { it.id })
+    }
 }

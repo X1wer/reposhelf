@@ -6,6 +6,7 @@ package io.github.x1wer.reposhelf.core.data.tracked
 import io.github.x1wer.reposhelf.core.data.catalog.toModelOrNull
 import io.github.x1wer.reposhelf.core.data.transfer.AppListEntry
 import android.database.sqlite.SQLiteConstraintException
+import androidx.room.withTransaction
 import io.github.x1wer.reposhelf.core.apk.CheckStatus
 import io.github.x1wer.reposhelf.core.apk.DeviceProfile
 import io.github.x1wer.reposhelf.core.apk.DownloadedApk
@@ -41,6 +42,8 @@ import io.github.x1wer.reposhelf.core.update.InstalledVersion
 import io.github.x1wer.reposhelf.core.update.KnownAnalyses
 import io.github.x1wer.reposhelf.core.update.KnownAnalysis
 import io.github.x1wer.reposhelf.core.update.ReleaseDiscovery
+import io.github.x1wer.reposhelf.core.update.RepoIdentityVerdict
+import io.github.x1wer.reposhelf.core.update.WarningCategory
 import io.github.x1wer.reposhelf.core.update.RepoIdentity
 import io.github.x1wer.reposhelf.core.update.StepResult
 import io.github.x1wer.reposhelf.core.update.TrackedSource
@@ -85,7 +88,7 @@ interface RequestBudget {
  * - Az ellenőrzések egymás után futnak, a legrégebben ellenőrzött először, és megállnak, ha az API-keret fogy.
  */
 class TrackedAppsRepository(
-    db: AppDatabase,
+    private val db: AppDatabase,
     private val providers: ProviderRegistry,
     private val installed: InstalledAppLookup,
     private val device: () -> DeviceProfile,
@@ -226,11 +229,18 @@ class TrackedAppsRepository(
      * A felhasználó elfogadja a repó megváltozott azonosságát (más azonosító vagy tulajdonos). Ez a felhasználó döntése
      * (C. 19.); az aláíró-folytonosság ettől függetlenül továbbra is kötelező.
      */
-    suspend fun acceptRepositoryIdentity(id: Long): Boolean {
+    suspend fun acceptRepositoryIdentity(id: Long, shownRepoId: ProviderRepoId? = null): Boolean {
         val row = dao.byId(id)?.app ?: return false
         val ref = row.toRef() ?: return false
         val provider = providers.get(ref.provider) ?: return false
         val repo = (provider.repository(ref) as? Fetch.Fresh)?.value ?: return false
+        // Csak azt a repót fogadjuk el, amelyet a felhasználó a döntéskor látott: ha közben megint más került a névre,
+        // a döntés nem érvényes (az adatlap újratöltve az új állapotot mutatja).
+        if (shownRepoId != null && repo.id != shownRepoId) return false
+        // A katalógusban ALÁÍRTAN rögzített azonosítót a felhasználó döntése nem írhatja felül (C. 19.).
+        val pinnedByCatalog = boundCatalogApp(row.catalogId, ref)?.repositoryId
+        if (pinnedByCatalog != null && pinnedByCatalog != repo.id) return false
+        warnings?.resolve(row.id, setOf(WarningCategory.REPO_ID_CHANGED))
         return updateSafely(
             row.copy(
                 repoOwner = repo.ref.owner, repoName = repo.ref.name, repoKey = repo.ref.key, repoId = repo.id.value,
@@ -239,6 +249,45 @@ class TrackedAppsRepository(
             ),
         )
     }
+
+    /**
+     * A repó azonosságának megerősítése közvetlenül a letöltés előtt (C. 19.; a kézi telepítési út kapuja). Elvárt
+     * azonosító: a követett sornál rögzített ÉS a katalógusban aláírtan rögzített (ha a katalógusbejegyzés erre a repóra
+     * szól); mindkettőnek egyeznie kell. Eltérésnél a követett sor „más repó azonos néven” állapotba kerül, kritikus
+     * figyelmeztetés rögzül, és a hívó nem tölthet le.
+     */
+    suspend fun confirmRepositoryIdentity(repo: RepoRef, catalogApp: CatalogApp?, trackedId: Long?): RepoIdentityVerdict {
+        val row = trackedId?.let { dao.byId(it)?.app } ?: dao.byRepoKey(repo.key)
+        val expected = listOfNotNull(
+            row?.repoId?.takeIf { it > 0 }?.let(::ProviderRepoId),
+            catalogApp?.takeIf { it.repo.key == repo.key }?.repositoryId,
+        ).distinct()
+        val verdict = discovery.confirmIdentity(repo, expected)
+        if (verdict is RepoIdentityVerdict.Mismatch) noteRepositoryIdMismatch(repo, row?.id, verdict.expected, verdict.actual)
+        return verdict
+    }
+
+    /**
+     * Azonos néven más repó (repojacking, C. 19–20.): a követett sor megjelölése és kritikus figyelmeztetés. Az adatlap
+     * is hívja, ha a betöltött repó-adat azonosítója eltér az elvárttól.
+     */
+    suspend fun noteRepositoryIdMismatch(repo: RepoRef, trackedId: Long?, expected: ProviderRepoId, actual: ProviderRepoId) {
+        val detail = "${expected.value} → ${actual.value}"
+        val row = (trackedId?.let { dao.byId(it)?.app } ?: dao.byRepoKey(repo.key)) ?: return
+        if (row.repoState != RepoState.ID_CHANGED.name || row.repoStateDetail != detail) {
+            updateSafely(row.copy(repoState = RepoState.ID_CHANGED.name, repoStateDetail = detail, checkStatus = UpdateStatus.REPO_ID_CHANGED.name))
+        }
+        warnings?.record(AppRef(row.id, row.packageName, row.displayName), listOf(WarningSpec(WarningCategory.REPO_ID_CHANGED, Severity.CRITICAL, detail)))
+    }
+
+    /**
+     * A követett sorhoz tartozó katalógusbejegyzés, de CSAK akkor, ha a katalógusban most is ugyanarra a repóra mutat
+     * (a katalógusazonosító önmagában nem elég: egy katalógusfrissítés ugyanazon azonosító alatt más repót, csomagnevet
+     * vagy aláírót adhatna meg; C. 3., 19.). Ha a bejegyzés eltűnt vagy más repóra mutat, az app nem katalógusbeliként
+     * kezelendő: a katalógus bizalmi adatai (csomagnév, aláíró, szűrő) nem alkalmazhatók rá.
+     */
+    suspend fun boundCatalogApp(catalogId: String?, repo: RepoRef): CatalogApp? =
+        catalogId?.let { catalogDao.byId(it) }?.toModelOrNull()?.takeIf { it.repo.key == repo.key }
 
     // ---- Import / export (C. 25.) ----
 
@@ -251,44 +300,74 @@ class TrackedAppsRepository(
     }
 
     /**
-     * Import (C. 25.): csak listát és beállítást ír; semmit nem telepít, nem tölt le és nem kér le a hálózatról.
-     * Meglévő alkalmazásnál a követés és a kedvenc csak bekapcsolódhat (az import nem töröl). A katalógusazonosító csak
-     * akkor érvényes, ha a helyi katalógusban ugyanarra a repóra mutat. Az automatikus telepítést importból nem kapcsoljuk
-     * be (a felhasználó az adatlapon kapcsolhatja): így egy fájl még közvetve sem indíthat telepítést.
+     * Mit tenne az import (C. 25.): a felület ezt mutatja meg MEGERŐSÍTÉSRE, mielőtt bármi íródna. Csak olvas.
+     * A saját (nem katalógusbeli) új források útvonalát felsorolja: ezekről a felhasználónak tudnia kell.
      */
-    suspend fun importList(entries: List<AppListEntry>): ImportSummary {
+    suspend fun previewImport(entries: List<AppListEntry>): ImportPreview {
+        var existing = 0
+        var fromCatalog = 0
+        val ownSources = mutableListOf<String>()
+        for (entry in entries) {
+            val catalog = boundCatalogApp(entry.catalogId, entry.repo)
+            when {
+                existingRowFor(entry, catalog) != null -> existing++
+                catalog != null -> fromCatalog++
+                else -> ownSources += entry.repo.path
+            }
+        }
+        return ImportPreview(existing, fromCatalog, ownSources)
+    }
+
+    private suspend fun existingRowFor(entry: AppListEntry, catalog: CatalogApp?): TrackedAppEntity? =
+        catalog?.let { rowForCatalog(it) } ?: dao.byRepoKey(entry.repo.key)
+            ?: entry.repositoryId?.let { dao.byRepoId(entry.repo.provider.id, it) }
+
+    /**
+     * Import (C. 25.): csak listát és beállítást ír; semmit nem telepít, nem tölt le és nem kér le a hálózatról. Az
+     * importfájl megbízhatatlan bemenet, ezért:
+     * - MEGLÉVŐ alkalmazásnál a követés és a kedvenc csak bekapcsolódhat, a beállításai NEM változnak (egy fájl nem
+     *   kapcsolhatja ki a frissítésellenőrzést vagy az értesítést, és nem lazíthat a szabályokon);
+     * - ÚJ alkalmazásnál semmilyen automatizmus nem kapcsolódik BE importból (automatikus telepítés, automatikus
+     *   letöltés, előzetes kiadások): ezeket a felhasználó az adatlapon kapcsolhatja be;
+     * - új saját forrásnál a stabil repó-azonosítót NEM a fájlból vesszük (az első ellenőrzés rögzíti a név alapján),
+     *   és a megjelenített név a repó neve, nem a fájlban megadott szöveg;
+     * - a katalógusazonosító csak akkor érvényes, ha a helyi katalógusban ugyanarra a repóra mutat;
+     * - az egész import egyetlen adatbázis-tranzakció (megszakadásnál nincs félig kész állapot).
+     */
+    suspend fun importList(entries: List<AppListEntry>): ImportSummary = db.withTransaction {
         var added = 0
         var updated = 0
-        var autoInstallDropped = 0
+        var automationDropped = 0
+        var settingsKept = 0
         val now = clock.millis()
         for (entry in entries) {
-            val overrides = entry.overrides?.let { o ->
-                if (o.autoInstall == true) {
-                    autoInstallDropped++
-                    o.copy(autoInstall = null)
-                } else {
-                    o
-                }
-            }
-            val catalog = entry.catalogId?.let { catalogDao.byId(it) }?.toModelOrNull()?.takeIf { it.repo.key == entry.repo.key }
-            val existing = catalog?.let { rowForCatalog(it) } ?: dao.byRepoKey(entry.repo.key)
-                ?: entry.repositoryId?.let { dao.byRepoId(entry.repo.provider.id, it) }
-            val id = if (existing != null) {
+            val catalog = boundCatalogApp(entry.catalogId, entry.repo)
+            val existing = existingRowFor(entry, catalog)
+            if (existing != null) {
                 dao.update(existing.copy(isFollowed = existing.isFollowed || entry.followed, isFavorite = existing.isFavorite || entry.favorite))
                 updated++
-                existing.id
-            } else {
-                val entity = if (catalog != null) {
-                    newEntity(AppOrigin.CATALOG, catalog.repo, catalog.id, catalog.repositoryId?.value, null, catalog.packageName, catalog.name, now)
-                } else {
-                    newEntity(AppOrigin.USER, entry.repo, null, entry.repositoryId, null, null, entry.name, now)
-                }
-                added++
-                insertOrExisting(entity.copy(isFollowed = entry.followed, isFavorite = entry.favorite))
+                if (entry.overrides?.isEmpty == false) settingsKept++
+                continue
             }
-            overrides?.takeUnless { it.isEmpty }?.let { o -> updateOverrides(id) { o } }
+            val entity = if (catalog != null) {
+                newEntity(AppOrigin.CATALOG, catalog.repo, catalog.id, catalog.repositoryId?.value, null, catalog.packageName, catalog.name, now)
+            } else {
+                newEntity(AppOrigin.USER, entry.repo, null, null, null, null, entry.repo.name, now)
+            }
+            added++
+            val id = insertOrExisting(entity.copy(isFollowed = entry.followed, isFavorite = entry.favorite))
+            val safe = entry.overrides?.let { o ->
+                val cleaned = o.copy(
+                    autoInstall = o.autoInstall.takeIf { it == false },
+                    autoDownload = o.autoDownload.takeIf { it == false },
+                    includePrereleases = o.includePrereleases.takeIf { it == false },
+                )
+                if (cleaned != o) automationDropped++
+                cleaned
+            }
+            safe?.takeUnless { it.isEmpty }?.let { o -> updateOverrides(id) { o } }
         }
-        return ImportSummary(added, updated, autoInstallDropped)
+        ImportSummary(added, updated, automationDropped, settingsKept)
     }
 
     // ---- Aláíró és elemzések (C. 19.) ----
@@ -364,7 +443,9 @@ class TrackedAppsRepository(
         val existing = trackedId?.let { dao.byId(it)?.app } ?: catalogApp?.let { rowForCatalog(it) } ?: dao.byRepoKey(repo.key)
         val base = existing ?: newEntity(
             if (catalogApp != null) AppOrigin.CATALOG else AppOrigin.USER, repo, catalogApp?.id,
-            repoMetadata?.id?.value ?: catalogApp?.repositoryId?.value, repoMetadata?.ownerId, outcome.packageName,
+            // Az aláírtan rögzített (katalógus) azonosító megelőzi a most lekértet: egy eltérített repó azonosítója
+            // soha nem válhat a későbbi ellenőrzések alapjává.
+            catalogApp?.repositoryId?.value ?: repoMetadata?.id?.value, repoMetadata?.ownerId, outcome.packageName,
             catalogApp?.name ?: repo.name, now,
         )
         val updated = base.copy(
@@ -429,7 +510,12 @@ class TrackedAppsRepository(
      */
     suspend fun checkAll(onChecked: suspend (TrackedApp, UpdateCheck) -> Unit = { _, _ -> }): CheckSummary = checkMutex.withLock {
         val global = globalSettings()
-        val rows = dao.followedOldestCheckFirst().filter { PolicyResolver.resolve(global, it.override.toOverrides()).checkEnabled }
+        val enabled = dao.followedOldestCheckFirst().filter { PolicyResolver.resolve(global, it.override.toOverrides()).checkEnabled }
+        // A készüléken TELEPÍTETT alkalmazások mindig előre kerülnek (azon belül a legrégebben ellenőrzött az első): a
+        // biztonsági frissítésük ellenőrzését egy nagy, csak követett lista (pl. import után) nem szoríthatja ki a
+        // szűkös API-keretből.
+        val (installedRows, otherRows) = withContext(Dispatchers.IO) { enabled.partition { row -> row.app.packageName?.let { installed.get(it) } != null } }
+        val rows = installedRows + otherRows
         var checked = 0
         var updates = 0
         var failed = 0
@@ -467,7 +553,7 @@ class TrackedAppsRepository(
         val policy = PolicyResolver.resolve(global ?: globalSettings(), row.override.toOverrides())
         val app = row.app
         val ref = app.toRef() ?: return UpdateCheck(UpdateStatus.ERROR, null, null, null, emptyList(), UpdateFailure.Other("ref"))
-        val catalog = app.catalogId?.let { catalogDao.byId(it) }?.toModelOrNull()
+        val catalog = boundCatalogApp(app.catalogId, ref)
         val source = TrackedSource(ref, app.repoId?.let(::ProviderRepoId), app.repoOwnerId, policy.includePrereleases, policy.releaseDelay)
         val installedNow = app.packageName?.let { installedVersion(it, app) }
         val check = checker.check(UpdateCheckInput(source, installedNow, catalog?.assetFilter, device()))

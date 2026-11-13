@@ -8,10 +8,16 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontFamily
+import io.github.x1wer.reposhelf.core.data.tracked.ImportPreview
+import io.github.x1wer.reposhelf.core.data.transfer.AppListEntry
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,8 +51,42 @@ fun TransferSection(container: AppContainer) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch { message = export(context, container, uri) }
     }
+    var pending by remember { mutableStateOf<PendingImport?>(null) }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch { message = import(context, container, uri) }
+        if (uri != null) {
+            scope.launch {
+                when (val read = readImport(context, container, uri)) {
+                    is ImportRead.Failed -> message = read.message
+                    is ImportRead.Ready -> pending = read.pending
+                }
+            }
+        }
+    }
+    // Az importfájl megbízhatatlan: a felhasználó az írás ELŐTT látja, mit tartalmaz (különösen az új saját forrásokat).
+    pending?.let { p ->
+        AlertDialog(
+            onDismissRequest = { pending = null },
+            title = { Text(stringResource(R.string.transfer_confirm_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.transfer_confirm_summary, p.preview.newFromCatalog, p.preview.newOwnSources.size, p.preview.existing, p.skipped))
+                    if (p.preview.newOwnSources.isNotEmpty()) {
+                        Text(stringResource(R.string.transfer_confirm_own_sources), style = MaterialTheme.typography.bodySmall)
+                        p.preview.newOwnSources.take(MAX_SHOWN_SOURCES).forEach { Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
+                        val more = p.preview.newOwnSources.size - MAX_SHOWN_SOURCES
+                        if (more > 0) Text(stringResource(R.string.transfer_confirm_more, more), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(stringResource(R.string.transfer_confirm_note), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pending = null
+                    scope.launch { message = applyImport(context, container, p) }
+                }) { Text(stringResource(R.string.transfer_import_confirm)) }
+            },
+            dismissButton = { TextButton(onClick = { pending = null }) { Text(stringResource(R.string.action_cancel)) } },
+        )
     }
 
     Text(stringResource(R.string.transfer_note), style = MaterialTheme.typography.bodySmall)
@@ -76,7 +116,18 @@ private suspend fun export(context: Context, container: AppContainer, uri: Uri):
     }
 }
 
-private suspend fun import(context: Context, container: AppContainer, uri: Uri): String {
+/** Egy beolvasott, de még NEM alkalmazott import: a bejegyzések, az előnézet és a kihagyott hibás bejegyzések száma. */
+private class PendingImport(val entries: List<AppListEntry>, val preview: ImportPreview, val skipped: Int)
+
+private sealed interface ImportRead {
+    class Failed(val message: String) : ImportRead
+    class Ready(val pending: PendingImport) : ImportRead
+}
+
+private const val MAX_SHOWN_SOURCES = 8
+
+/** Beolvasás és előnézet: semmit nem ír. A feldolgozás nem a fő szálon fut. */
+private suspend fun readImport(context: Context, container: AppContainer, uri: Uri): ImportRead {
     val bytes = try {
         withContext(Dispatchers.IO) {
             context.contentResolver.openInputStream(uri)?.use { it.readAtMost(AppListFormat.MAX_BYTES) }
@@ -85,21 +136,32 @@ private suspend fun import(context: Context, container: AppContainer, uri: Uri):
         null
     } catch (_: SecurityException) {
         null
-    } ?: return context.getString(R.string.transfer_read_failed)
-    return when (val decoded = AppListFormat.decode(bytes)) {
-        is AppListDecodeResult.Invalid -> context.getString(
-            when (decoded.reason) {
-                AppListDecodeResult.Invalid.Reason.TOO_LARGE, AppListDecodeResult.Invalid.Reason.TOO_MANY_ENTRIES -> R.string.transfer_too_large
-                AppListDecodeResult.Invalid.Reason.UNSUPPORTED_VERSION -> R.string.transfer_unsupported
-                AppListDecodeResult.Invalid.Reason.MALFORMED, AppListDecodeResult.Invalid.Reason.NOT_AN_APP_LIST -> R.string.transfer_not_a_list
-            },
+    } ?: return ImportRead.Failed(context.getString(R.string.transfer_read_failed))
+    return when (val decoded = withContext(Dispatchers.Default) { AppListFormat.decode(bytes) }) {
+        is AppListDecodeResult.Invalid -> ImportRead.Failed(
+            context.getString(
+                when (decoded.reason) {
+                    AppListDecodeResult.Invalid.Reason.TOO_LARGE, AppListDecodeResult.Invalid.Reason.TOO_MANY_ENTRIES -> R.string.transfer_too_large
+                    AppListDecodeResult.Invalid.Reason.UNSUPPORTED_VERSION -> R.string.transfer_unsupported
+                    AppListDecodeResult.Invalid.Reason.MALFORMED, AppListDecodeResult.Invalid.Reason.NOT_AN_APP_LIST -> R.string.transfer_not_a_list
+                },
+            ),
         )
-        is AppListDecodeResult.Decoded -> {
-            val summary = container.trackedApps.importList(decoded.entries)
-            buildString {
-                append(context.getString(R.string.transfer_imported, summary.added, summary.updated, decoded.skipped.size))
-                if (summary.autoInstallNotImported > 0) append(' ').append(context.getString(R.string.transfer_auto_install_not_imported, summary.autoInstallNotImported))
+        is AppListDecodeResult.Decoded ->
+            if (decoded.entries.isEmpty()) {
+                ImportRead.Failed(context.getString(R.string.transfer_nothing_to_import, decoded.skipped.size))
+            } else {
+                ImportRead.Ready(PendingImport(decoded.entries, container.trackedApps.previewImport(decoded.entries), decoded.skipped.size))
             }
-        }
+    }
+}
+
+/** Az import alkalmazása a felhasználó megerősítése UTÁN. */
+private suspend fun applyImport(context: Context, container: AppContainer, pending: PendingImport): String {
+    val summary = container.trackedApps.importList(pending.entries)
+    return buildString {
+        append(context.getString(R.string.transfer_imported, summary.added, summary.updated, pending.skipped))
+        if (summary.automationNotImported > 0) append(' ').append(context.getString(R.string.transfer_auto_install_not_imported, summary.automationNotImported))
+        if (summary.existingSettingsKept > 0) append(' ').append(context.getString(R.string.transfer_existing_settings_kept, summary.existingSettingsKept))
     }
 }

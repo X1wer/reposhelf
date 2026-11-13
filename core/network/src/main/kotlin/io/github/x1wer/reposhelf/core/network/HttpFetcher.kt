@@ -182,13 +182,13 @@ class HttpFetcher(
             if (name.equals("Authorization", ignoreCase = true) && !sameHostAsOriginal) continue
             builder.header(name, value)
         }
-        request.validators?.etag?.let { builder.header("If-None-Match", it) }
-        request.validators?.lastModified?.let { builder.header("If-Modified-Since", it) }
+        safeValidator(request.validators?.etag)?.let { builder.header("If-None-Match", it) }
+        safeValidator(request.validators?.lastModified)?.let { builder.header("If-Modified-Since", it) }
         return builder.build()
     }
 
     private fun handleFinal(request: FetchRequest, r: Response): Attempt {
-        val validators = Validators(r.header("ETag"), r.header("Last-Modified"))
+        val validators = Validators(safeValidator(r.header("ETag")), safeValidator(r.header("Last-Modified")))
         return when {
             r.code == 304 -> Attempt.Done(
                 FetchResponse.NotModified(if (validators.isEmpty) request.validators ?: Validators.NONE else validators),

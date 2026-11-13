@@ -117,6 +117,7 @@
     <string name="repo_state_renamed">A repót átnevezték; a RepoShelf az új nevet követi.</string>
     <string name="repo_state_owner_changed">A repó más tulajdonoshoz került. Frissítés előtt győződj meg róla, hogy ez várható volt.</string>
     <string name="repo_state_id_changed">Ezen a néven most egy másik repó van (az eredetit törölték vagy átnevezték). A telepítés és a frissítés tiltva, amíg nem döntesz.</string>
+    <string name="repo_state_pinned_by_catalog">A katalógus rögzíti, hogy ez az alkalmazás melyik repóból származik, ezért ez itt nem bírálható felül. A másik repóból semmit nem töltünk le és nem telepítünk. Ha a projekt valóban átköltözött, előbb a katalógust kell frissíteni.</string>
     <string name="repo_state_not_found">A repó már nem található. A telepített alkalmazást ez nem érinti.</string>
     <string name="repo_state_unavailable">A repó nem érhető el (például letiltották).</string>
     <string name="repo_state_accept_note">Csak akkor fogadd el, ha megbízol az új repóban. Az aláíró-ellenőrzés továbbra is érvényes: más kulccsal aláírt alkalmazást ezután sem telepítünk.</string>

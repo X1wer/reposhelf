@@ -49,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -105,7 +104,6 @@ fun DetailsScreen(key: DetailsKey, onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: () -> Unit) {
-    val uriHandler = LocalUriHandler.current
     val warnings by vm.warnings.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
@@ -129,8 +127,9 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
                             Icon(Icons.Filled.Share, contentDescription = shareTitle)
                         }
                     }
-                    state.repo?.htmlUrl?.let { url ->
-                        IconButton(onClick = { uriHandler.openUri(url) }) {
+                    state.subject?.let { subject ->
+                        // A cím a repó-hivatkozásból épül (mindig a szolgáltató saját hosztja), nem az API-válasz mezőjéből.
+                        IconButton(onClick = { io.github.x1wer.reposhelf.ui.common.openUrl(context, subject.repo.webUrl()) }) {
                             Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = stringResource(R.string.action_open_repo))
                         }
                     }
@@ -272,7 +271,20 @@ private fun TrackingRow(state: DetailsUiState, vm: DetailsViewModel) {
 /** A repó azonosságának változása (C. 19.): átnevezés (info), tulajdonosváltás (figyelmeztetés), más repó (kritikus). */
 @Composable
 private fun RepoStateNotice(state: DetailsUiState, vm: DetailsViewModel) {
-    val tracked = state.tracked ?: return
+    val mismatch = state.identityMismatch
+    val tracked = state.tracked
+    if (tracked == null || (mismatch != null && tracked.repoState != RepoState.ID_CHANGED)) {
+        // Nem követett (pl. katalógusbeli) alkalmazás, vagy a követett sor állapota még nem frissült: az eltérés így is látszik.
+        if (mismatch == null) return
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.repo_state_id_changed), style = MaterialTheme.typography.bodyMedium)
+                Text(mismatch, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                if (state.identityPinnedByCatalog) Text(stringResource(R.string.repo_state_pinned_by_catalog), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        return
+    }
     val (textRes, critical) = when (tracked.repoState) {
         RepoState.OK -> return
         RepoState.RENAMED -> R.string.repo_state_renamed to false
@@ -286,7 +298,10 @@ private fun RepoStateNotice(state: DetailsUiState, vm: DetailsViewModel) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(stringResource(textRes), style = MaterialTheme.typography.bodyMedium)
             tracked.repoStateDetail?.let { Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
-            if (tracked.repoState == RepoState.ID_CHANGED || tracked.repoState == RepoState.OWNER_CHANGED) {
+            if (tracked.repoState == RepoState.ID_CHANGED && state.identityPinnedByCatalog) {
+                // A katalógus aláírtan rögzíti az azonosítót: ezt a felhasználó nem bírálhatja felül.
+                Text(stringResource(R.string.repo_state_pinned_by_catalog), style = MaterialTheme.typography.bodySmall)
+            } else if (tracked.repoState == RepoState.ID_CHANGED || tracked.repoState == RepoState.OWNER_CHANGED) {
                 Text(stringResource(R.string.repo_state_accept_note), style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = vm::acceptRepositoryIdentity) { Text(stringResource(R.string.action_accept_repo_identity)) }
             }
@@ -441,6 +456,10 @@ private fun InstallSection(state: DetailsUiState, vm: DetailsViewModel) {
                 }
                 is InstallUiState.StartFailed -> {
                     Text(stringResource(R.string.install_failed, install.reason), color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = vm::onInstallClicked) { Text(stringResource(R.string.action_retry)) }
+                }
+                InstallUiState.IdentityUnconfirmed -> {
+                    Text(stringResource(R.string.install_identity_unconfirmed), color = MaterialTheme.colorScheme.error)
                     OutlinedButton(onClick = vm::onInstallClicked) { Text(stringResource(R.string.action_retry)) }
                 }
             }
@@ -668,6 +687,7 @@ private fun downloadFailureText(reason: DownloadFailure, detail: String?): Strin
     DownloadFailure.HOST_NOT_ALLOWED, DownloadFailure.TOO_MANY_REDIRECTS, DownloadFailure.INVALID_REDIRECT -> stringResource(R.string.dl_host)
     DownloadFailure.HTTP_ERROR -> stringResource(R.string.dl_http, detail.orEmpty())
     DownloadFailure.TOO_LARGE -> stringResource(R.string.dl_too_large)
+    DownloadFailure.INTERNAL -> stringResource(R.string.dl_internal)
 }
 
 @Composable

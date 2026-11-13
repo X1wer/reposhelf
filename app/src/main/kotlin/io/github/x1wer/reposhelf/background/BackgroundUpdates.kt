@@ -116,7 +116,8 @@ class BackgroundUpdates(
 
     private suspend fun downloadAndMaybeInstall(app: TrackedApp, release: Release, assets: List<ReleaseAsset>, plan: BackgroundPlan, label: String) {
         if (assets.isEmpty()) return
-        val catalogApp = app.catalogId?.let { container.catalogRepository.app(it) }
+        // A katalógusbejegyzés csak akkor érvényes erre az appra, ha most is ugyanarra a repóra mutat (C. 3., 19.).
+        val catalogApp = container.trackedApps.boundCatalogApp(app.catalogId, app.repo)
         val target = InstallTarget(
             expectedPackageName = catalogApp?.packageName ?: app.packageName,
             pinnedSignerCerts = catalogApp?.signingCertSha256.orEmpty(),

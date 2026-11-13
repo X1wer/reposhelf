@@ -20,6 +20,7 @@ import io.github.x1wer.reposhelf.core.update.StepResult
 import io.github.x1wer.reposhelf.core.update.UnattendedInstallPolicy
 import io.github.x1wer.reposhelf.core.update.UnattendedReason
 import io.github.x1wer.reposhelf.core.update.UpdateFailure
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -55,8 +56,24 @@ class InstallCoordinator(
     /** Az első telepítéskor (vagy a már telepített példányról) rögzített aláírók csomagonként (C. 19.). */
     private val storedPins: suspend (packageName: String) -> List<String>,
 ) {
-    /** 4–6. lépés. */
+    /**
+     * 4–6. lépés. A megbízhatatlan állomány feldolgozása közbeni VÁRATLAN hiba (pl. egy értelmező kivétele) nem
+     * omlaszthatja össze az alkalmazást vagy a háttérfutást: sikertelen előkészítés lesz belőle.
+     */
     suspend fun prepare(
+        assets: List<ReleaseAsset>,
+        policy: HttpPolicy,
+        target: InstallTarget,
+        onProgress: (downloaded: Long, total: Long) -> Unit,
+    ): PreparedInstall = try {
+        prepareUnguarded(assets, policy, target, onProgress)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: RuntimeException) {
+        PreparedInstall.DownloadFailed(DownloadFailure.INTERNAL, e.javaClass.simpleName, resumable = false)
+    }
+
+    private suspend fun prepareUnguarded(
         assets: List<ReleaseAsset>,
         policy: HttpPolicy,
         target: InstallTarget,
@@ -77,14 +94,22 @@ class InstallCoordinator(
      * 5–6. lépés már a készüléken lévő állományokra. Csak a debug build helyi saját frissítés-szimulációja használja
      * (emulátoros teszt hálózat nélkül); ugyanaz az ellenőrzés fut, mint letöltés után.
      */
-    suspend fun verifyLocal(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall = verify(files, target)
+    suspend fun verifyLocal(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall = try {
+        verify(files, target)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: RuntimeException) {
+        PreparedInstall.DownloadFailed(DownloadFailure.INTERNAL, e.javaClass.simpleName, resumable = false)
+    }
 
     private suspend fun verify(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall {
         val device = installed.deviceProfile()
         val integrity = withContext(Dispatchers.IO) { verifier.checkIntegrity(files) }
         suspend fun context(packageName: String?) = VerificationContext(
             expectedPackageName = target.expectedPackageName,
-            pinnedSignerCerts = (target.pinnedSignerCerts + (packageName?.let { storedPins(it) }.orEmpty())).distinct(),
+            // A megbízható forrás (katalógus / build) és a helyben rögzített aláíró KÜLÖN feltétel (C. 19.).
+            pinnedSignerCerts = target.pinnedSignerCerts,
+            storedSignerCerts = packageName?.let { storedPins(it) }.orEmpty(),
             minVersionCode = target.minVersionCode,
             installed = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } },
             device = device,

@@ -111,4 +111,29 @@ class WarningClassifierTest {
         assertTrue(plan.download)
         assertFalse(plan.install, "nyugtázatlan figyelmeztetésnél nincs automatikus telepítés")
     }
+
+    // ---- SIG-04: kritikus figyelmeztetést csak igazolt azonosságú, ÚJABB állomány oldhat fel ----
+
+    private fun installableReport(identity: SignerIdentity, vararg findings: Finding) = VerificationReport(
+        integrity = emptyList(), signatureValid = CheckStatus.OK, identity = identity, compatibility = emptyList(),
+        facts = ApkFacts("com.example", 11, "1.1", 28, 37, null, SignerInfo(listOf("aa"), listOf("aa"), false)),
+        splitFacts = emptyList(), nativeAbis = emptySet(), findings = findings.toList(),
+    )
+
+    @Test
+    fun criticalWarnings_areNotResolvedByAttackerControlledReports() {
+        val all = setOf(WarningCategory.SIGNER_CHANGED, WarningCategory.PACKAGE_CHANGED, WarningCategory.DOWNGRADE, WarningCategory.CORRUPTED)
+        // Igazolt azonosságú, újabb állomány: feloldja a kiadáshoz kötött eseteket.
+        assertEquals(all, WarningClassifier.resolvedByReport(installableReport(SignerIdentity.MATCHES_INSTALLED)))
+        assertEquals(all, WarningClassifier.resolvedByReport(installableReport(SignerIdentity.MATCHES_PINNED)))
+        // A már telepített APK újabb címkével közzétéve (azonos verziókód): semmit nem old fel.
+        val sameVersion = installableReport(SignerIdentity.MATCHES_INSTALLED, Finding(FindingKind.SAME_VERSION, Severity.WARNING))
+        assertTrue(sameVersion.isInstallable)
+        assertEquals(emptySet(), WarningClassifier.resolvedByReport(sameVersion))
+        // Nem igazolt azonosság (első látás): csak a sérült letöltés oldódik fel, az aláíróváltás nem.
+        assertEquals(setOf(WarningCategory.CORRUPTED), WarningClassifier.resolvedByReport(installableReport(SignerIdentity.FIRST_SEEN)))
+        // Nem telepíthető állomány semmit nem old fel.
+        val blocked = installableReport(SignerIdentity.MISMATCH, Finding(FindingKind.SIGNER_CHANGED, Severity.CRITICAL))
+        assertEquals(emptySet(), WarningClassifier.resolvedByReport(blocked))
+    }
 }

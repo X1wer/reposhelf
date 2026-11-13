@@ -11,6 +11,7 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import androidx.work.WorkManager
 import io.github.x1wer.reposhelf.background.UpdateScheduler
+import io.github.x1wer.reposhelf.core.installer.ApkInspectionService
 import io.github.x1wer.reposhelf.core.update.GlobalSettings
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -22,6 +23,9 @@ class RepoShelfApplication : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // Az APK-elemző segédfolyamatban (D-031) az alkalmazás szolgáltatásai nem indulnak el: ott csak a nem exportált
+        // ApkInspectionService fut, adatbázis, ütemezés és hálózat nélkül.
+        if (ApkInspectionService.isInspectionProcess()) return
         container = AppContainer(this)
         container.notifier.createChannels()
         // A megszakadt telepítések rendezése és a függő saját frissítés egyeztetése (C. 14.).

@@ -77,5 +77,11 @@ object ZipInspector {
         null
     } catch (_: IOException) {
         null
+    } catch (_: RuntimeException) {
+        // Hibás bejegyzésnév vagy szerkezet a megbízhatatlan állományban (pl. érvénytelen kódolás): nem érvényes APK.
+        null
+    } catch (_: RuntimeException) {
+        // Hibás bejegyzésnév vagy szerkezet a megbízhatatlan állományban (pl. érvénytelen kódolás): nem érvényes APK.
+        null
     }
 }
