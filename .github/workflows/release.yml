@@ -1,0 +1,136 @@
+# SPDX-FileCopyrightText: 2026 RepoShelf contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Kiadás (C. 37.; docs: D-129, D-130): egy `vX.Y.Z` tag pusholására aláírt APK-k, SHA-256 összegek és a CHANGELOG.md
+# szakaszából készült leírás egy VÁZLAT GitHub-kiadásban. A közzététel (Publish) mindig kézi, emberi lépés.
+#
+# Előfeltételek (a tulajdonos állítja be, docs/ARCHITECTURE.md 16.):
+# - `release` nevű environment kötelező jóváhagyóval és csak `v*` tagekre korlátozva; a titkok ebben az environmentben
+#   vannak, így csak jóváhagyott futás éri el őket:
+#   REPOSHELF_KEYSTORE_BASE64, REPOSHELF_KEYSTORE_PASSWORD, REPOSHELF_KEY_ALIAS, REPOSHELF_KEY_PASSWORD
+#   (a valódi release-kulcsról a felhasználó dönt: Q-007);
+# - `gradle.properties`: `reposhelf.selfUpdate.signerSha256` = a release-kulcs tanúsítványának SHA-256 ujjlenyomata;
+# - a katalógus valódi kulcsa a `reposhelf.catalog.publicKeys`-ben (teszt-kulccsal a build szándékosan elbukik, D-121).
+#
+# Biztonság: gyorsítótár nélkül épít (nem mérgezhető), a kulcsfájl csak a futó gép ideiglenes könyvtárában létezik,
+# a `run` blokkokba nem kerül `${{ }}` kifejezés, a GITHUB_TOKEN csak `contents: write` jogot kap ebben a jobban.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  release:
+    name: Signed draft release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Gradle wrapper validation
+        uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Gradle (no cache for release builds)
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-disabled: true
+
+      - name: Android SDK components
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          "$SDKMANAGER" --install "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+
+      - name: Tag, version and CHANGELOG section
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 -I tools/release_tools.py notes --tag "$TAG" --out "$RUNNER_TEMP/release-notes.md"
+
+      - name: Expected release signer must be configured
+        run: |
+          EXPECTED=$(grep '^reposhelf.selfUpdate.signerSha256=' gradle.properties | cut -d= -f2-)
+          if ! printf '%s' "$EXPECTED" | grep -Eq '^[0-9a-f]{64}(,[0-9a-f]{64})*$'; then
+            echo "::error::reposhelf.selfUpdate.signerSha256 is not set: the app would not pin its own release signer."
+            exit 1
+          fi
+
+      - name: Tests and lint
+        run: ./gradlew --no-configuration-cache test :app:lintGithubRelease
+
+      - name: Release key from the environment secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.REPOSHELF_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The release signing key is not configured (see Q-007)."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      - name: Signed release builds
+        env:
+          REPOSHELF_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          REPOSHELF_KEYSTORE_PASSWORD: ${{ secrets.REPOSHELF_KEYSTORE_PASSWORD }}
+          REPOSHELF_KEY_ALIAS: ${{ secrets.REPOSHELF_KEY_ALIAS }}
+          REPOSHELF_KEY_PASSWORD: ${{ secrets.REPOSHELF_KEY_PASSWORD }}
+        run: ./gradlew --no-configuration-cache --no-build-cache :app:assembleGithubRelease :app:assembleFdroidRelease
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+
+      - name: Verify signatures against the expected signer
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          EXPECTED=",$(grep '^reposhelf.selfUpdate.signerSha256=' gradle.properties | cut -d= -f2-),"
+          for apk in app/build/outputs/apk/github/release/app-github-release.apk app/build/outputs/apk/fdroid/release/app-fdroid-release.apk; do
+            "$APKSIGNER" verify --print-certs "$apk" > "$RUNNER_TEMP/certs.txt"
+            SIGNERS=$(grep -c 'certificate SHA-256 digest' "$RUNNER_TEMP/certs.txt")
+            ACTUAL=$(grep -m1 'certificate SHA-256 digest' "$RUNNER_TEMP/certs.txt" | awk '{print $NF}')
+            if [ "$SIGNERS" -ne 1 ] || ! printf '%s' "$EXPECTED" | grep -q ",$ACTUAL,"; then
+              echo "::error::$apk is not signed by exactly the expected release key."
+              exit 1
+            fi
+          done
+
+      - name: Collect assets and SHA-256 sums
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/github/release/app-github-release.apk "dist/RepoShelf-$TAG.apk"
+          cp app/build/outputs/apk/fdroid/release/app-fdroid-release.apk "dist/RepoShelf-$TAG-fdroid.apk"
+          python3 -I tools/release_tools.py sums dist/*.apk --out dist/SHA256SUMS
+          cat dist/SHA256SUMS >> "$RUNNER_TEMP/release-notes.md"
+
+      - name: Draft GitHub release (publishing stays a manual step)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: >-
+          gh release create "$TAG" dist/RepoShelf-*.apk dist/SHA256SUMS
+          --draft --verify-tag --title "RepoShelf $TAG" --notes-file "$RUNNER_TEMP/release-notes.md"

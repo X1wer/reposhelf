@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 RepoShelf contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Csak a GitHub Actions rögzített SHA-it frissíti (D-131). A Gradle-függőségeket nem: azok frissítése a
+# gradle/verification-metadata.xml újragenerálásával és átnézésével jár (CLAUDE.md, D-124).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

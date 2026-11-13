@@ -11,7 +11,14 @@ pluginManagement {
             }
         }
         mavenCentral()
-        gradlePluginPortal()
+        // A Gradle Plugin Portal csak a Kotlin- és a KSP-plugin jelölőire és moduljaira (SUP-02): minden más függőség a
+        // Google Mavenből vagy a Maven Centralból jön, így egy portálra feltöltött, azonos nevű csomag nem kerülhet be.
+        gradlePluginPortal {
+            content {
+                includeGroupByRegex("org\\.jetbrains\\.kotlin.*")
+                includeGroup("com.google.devtools.ksp")
+            }
+        }
     }
 }
 

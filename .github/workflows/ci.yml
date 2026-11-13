@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 RepoShelf contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# CI (C. 37.; docs: D-131): forráskód-ellenőrzés (lint, API-szint), tesztek, build, függőségek (Gradle dependency
+# verification + OSV), debug APK-k. Titkot nem használ.
+# - `pull_request` (nem `pull_request_target`): idegen PR kódja csak olvasási jogot kap, titkot nem.
+# - Minden action commit SHA-hoz rögzített (a megjegyzésben a verzió); a frissítést a Dependabot javasolja.
+# - A `run` blokkokba nem kerül `${{ }}` kifejezés (parancsinjektálás ellen); minden érték környezeti változóból jön.
+# - A release-szerű build a katalógus TESZT-kulcsával készül: ez NEM kiadható, nem production release.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  build:
+    name: Lint, tests, builds, dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Gradle wrapper validation
+        uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: JDK 21
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # Csak a main ág írhatja a gyorsítótárat (PR-ból nem mérgezhető).
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Android SDK components
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          "$SDKMANAGER" --install "platforms;android-37.0" "build-tools;37.0.0" "platform-tools" > /dev/null
+
+      - name: Python tool tests
+        run: python3 -I -m unittest discover -s tools
+
+      - name: Unit tests, debug builds, lint, instrumented test APKs
+        run: >-
+          ./gradlew test assembleGithubDebug assembleFdroidDebug :app:lintGithubDebug
+          :app:assembleGithubDebugAndroidTest :core:installer:assembleDebugAndroidTest
+
+      - name: API level of the pure JVM modules (minSdk 28)
+        run: >-
+          python3 -I tools/check_jvm_api_level.py "$ANDROID_HOME/platforms/android-37.0/data/api-versions.xml"
+          "$JAVA_HOME/bin/javap" 28 core/*/build/classes/kotlin/main
+
+      - name: Release-like build (R8) with the TEST catalog key – not a production release
+        run: ./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease -Preposhelf.allowTestCatalogKey=true
+
+      - name: Known vulnerabilities (OSV.dev; fails only for components shipped in the APK)
+        run: |
+          ./gradlew -q :app:dependencies --configuration githubReleaseRuntimeClasspath > build/runtime-deps.txt
+          python3 -I tools/osv_check.py --runtime build/runtime-deps.txt --all gradle/verification-metadata.xml
+
+      - name: Upload debug APKs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reposhelf-debug-apks
+          path: |
+            app/build/outputs/apk/github/debug/*.apk
+            app/build/outputs/apk/fdroid/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reposhelf-reports
+          path: |
+            app/build/reports/
+            **/build/test-results/
+          retention-days: 14
+          if-no-files-found: ignore

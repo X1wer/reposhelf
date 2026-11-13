@@ -18,6 +18,12 @@ val testCatalogKeyIds: List<String> = catalogKeys.split(',').map { it.substringB
 /** Csak teszteléshez (pl. release-szerű próba-build a valódi kulcs elkészülte előtt): -Preposhelf.allowTestCatalogKey=true */
 val allowTestCatalogKey: Boolean = providers.gradleProperty("reposhelf.allowTestCatalogKey").orNull == "true"
 
+/**
+ * Release-aláírás (C. 37., D-129): KIZÁRÓLAG környezeti változókból (CI-ban GitHub Secretsből). A kulcs és a jelszavak
+ * soha nem kerülnek a repóba vagy a gradle.properties-be. Ha a változók hiányoznak, a release APK aláíratlan marad.
+ */
+val releaseKeystorePath: String? = providers.environmentVariable("REPOSHELF_KEYSTORE_FILE").orNull?.takeIf { it.isNotBlank() }
+
 android {
     // Ideiglenes azonosító (docs/DECISIONS.md D-002, Q-004): az első nyilvános kiadásig változtatható.
     namespace = "io.github.x1wer.reposhelf"
@@ -32,7 +38,9 @@ android {
         // A versionCode felülírható (-Preposhelf.versionCode=N): a saját frissítés emulátoros szimulációjához két,
         // azonos kulccsal aláírt, eltérő verziókódú build kell (B. 6.5.). Alapérték: 1.
         versionCode = providers.gradleProperty("reposhelf.versionCode").orNull?.toIntOrNull() ?: 1
-        versionName = providers.gradleProperty("reposhelf.versionName").orNull ?: "0.1.0-dev"
+        val versionNameProperty = providers.gradleProperty("reposhelf.versionName").orNull ?: "0.0.0"
+        require(versionNameProperty.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+([-.][A-Za-z0-9.]+)?$"))) { "Érvénytelen reposhelf.versionName" }
+        versionName = versionNameProperty
 
         // A katalógus helye (docs/ARCHITECTURE.md 7.4., D-021). A repó még nincs publikálva:
         // amíg nem érhető el, az app a beépített (APK-ba csomagolt) katalógussal működik.
@@ -44,26 +52,67 @@ android {
         // Ennél régebbi katalógust a kliens nem fogad el (D-022). Legalább a beépített katalógus sorszáma.
         buildConfigField("long", "MIN_CATALOG_SERIAL", "1L")
         buildConfigField("String", "CATALOG_PUBLIC_KEYS", "\"$catalogKeys\"")
-        // Saját frissítés (C. 14., D-062): a saját repó és a release-aláíró elvárt SHA-256 ujjlenyomata(i) build-paraméter
-        // (gradle.properties). Üres ujjlenyomat esetén a futó app saját aláírója az elvárt (a telepített példányhoz
-        // képest ellenőrzünk, ARCH 10.3.). A végleges release-kulcs a 9. munkamenetben (Q-007).
-        val selfRepo = providers.gradleProperty("reposhelf.selfUpdate.repo").orNull ?: ""
-        val selfSigners = providers.gradleProperty("reposhelf.selfUpdate.signerSha256").orNull ?: ""
-        require(selfRepo.isEmpty() || selfRepo.matches(Regex("^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$"))) { "Érvénytelen reposhelf.selfUpdate.repo" }
-        require(selfSigners.isEmpty() || selfSigners.split(',').all { it.matches(Regex("^[0-9a-f]{64}$")) }) { "Érvénytelen reposhelf.selfUpdate.signerSha256" }
-        buildConfigField("String", "SELF_UPDATE_REPO", "\"$selfRepo\"")
-        buildConfigField("String", "SELF_UPDATE_SIGNERS", "\"$selfSigners\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Terjesztési csatornák (C. 32., ARCH 16., D-042). A `play` változat v1-ben nincs.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            isDefault = true
+            // Saját frissítés (C. 14., D-062): a saját repó és a release-aláíró elvárt SHA-256 ujjlenyomata(i)
+            // build-paraméter (gradle.properties). Üres ujjlenyomat esetén a futó app saját aláírója az elvárt.
+            val selfRepo = providers.gradleProperty("reposhelf.selfUpdate.repo").orNull ?: ""
+            val selfSigners = providers.gradleProperty("reposhelf.selfUpdate.signerSha256").orNull ?: ""
+            require(selfRepo.isEmpty() || selfRepo.matches(Regex("^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$"))) { "Érvénytelen reposhelf.selfUpdate.repo" }
+            require(selfSigners.isEmpty() || selfSigners.split(',').all { it.matches(Regex("^[0-9a-f]{64}$")) }) { "Érvénytelen reposhelf.selfUpdate.signerSha256" }
+            buildConfigField("String", "SELF_UPDATE_REPO", "\"$selfRepo\"")
+            buildConfigField("String", "SELF_UPDATE_SIGNERS", "\"$selfSigners\"")
+        }
+        create("fdroid") {
+            dimension = "distribution"
+            // Külön csomagnév: a két változat nem frissíti egymást (Obtainium-minta). Az F-Droid frissít, ezért saját
+            // frissítés nincs: üres repó-paraméter = kikapcsolva, kérdés és hálózati kérés nélkül (D-042).
+            applicationIdSuffix = ".fdroid"
+            buildConfigField("String", "SELF_UPDATE_REPO", "\"\"")
+            buildConfigField("String", "SELF_UPDATE_SIGNERS", "\"\"")
+        }
+    }
+
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = providers.environmentVariable("REPOSHELF_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("REPOSHELF_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("REPOSHELF_KEY_PASSWORD").get()
+                // minSdk 28: a v2/v3 séma elég; a v3 teszi lehetővé a későbbi kulcsrotációt.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            versionNameSuffix = "-dev"
+        }
         release {
             // Teszt-kulcsos próba-build: a verziónévből is látszik, hogy nem kiadható.
             if (testCatalogKeyIds.isNotEmpty() && allowTestCatalogKey) versionNameSuffix = "-testcatalog"
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+
+    // A Google-kulccsal titkosított függőség-metaadat nem kerül az APK-ba (F-Droid, reprodukálható build; C. 31.).
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     buildFeatures {
@@ -111,7 +160,8 @@ val checkReleaseCatalogKey = tasks.register("checkReleaseCatalogKey") {
         }
     }
 }
-tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkReleaseCatalogKey) }
+// Minden release-változat (githubRelease, fdroidRelease, …) előfeltétele: pre<Változat>ReleaseBuild.
+tasks.matching { it.name.startsWith("pre") && it.name.endsWith("ReleaseBuild") }.configureEach { dependsOn(checkReleaseCatalogKey) }
 
 dependencies {
     implementation(project(":core:model"))
