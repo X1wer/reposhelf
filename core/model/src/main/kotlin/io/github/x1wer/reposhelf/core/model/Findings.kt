@@ -62,6 +62,12 @@ enum class FindingKind {
     /** A split APK-készlet nem egységes (csomagnév, verziókód, aláíró vagy alap-APK). */
     SPLIT_SET_INCONSISTENT,
 
+    /**
+     * Split-készlet: a kiegészítő állományok csomagnevét, verziókódját és aláíróját csak a rendszer ellenőrzi a
+     * telepítéskor (D-128). Telepítés előtt kifejezett megerősítés kell; beavatkozás nélküli telepítés nincs.
+     */
+    SPLITS_VERIFIED_BY_SYSTEM,
+
     /** A kiadási állomány nem a várt formátumú (pl. AAB, .apks). */
     UNEXPECTED_FORMAT,
 

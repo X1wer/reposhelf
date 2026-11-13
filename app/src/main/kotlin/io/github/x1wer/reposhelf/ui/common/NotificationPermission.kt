@@ -54,6 +54,7 @@ fun NotificationPermissionGate(onlyOnce: Boolean = false, content: @Composable (
             title = { Text(stringResource(R.string.notif_permission_title)) },
             text = { Text(stringResource(R.string.notif_permission_text)) },
             confirmButton = {
+                ObscuredTouchGuard()
                 TextButton(onClick = {
                     showRationale = false
                     scope.launch { settings.markNotificationPermissionAsked() }

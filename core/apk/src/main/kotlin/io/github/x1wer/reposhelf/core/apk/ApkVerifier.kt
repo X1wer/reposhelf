@@ -42,6 +42,13 @@ data class VerificationContext(
      * APK ellenőrzött láncában: egy rotációval lecserélt (visszavont) régi kulcs önmagában nem elég.
      */
     val storedSignerCerts: List<String> = emptyList(),
+    /**
+     * Split-készletnél a kiegészítő állományok (az első utániak) ellenőrzése a rendszerre bízható-e (D-128): a rendszer
+     * elemzője az önálló splitet nem dolgozza fel, a telepítéskor viszont elutasítja a más csomagú, verziójú vagy az
+     * alap-APK-étól eltérő aláírójú splitet. Az alap-APK ettől függetlenül mindig teljes vizsgálaton megy át.
+     * Alapértelmezés: nem (a saját frissítés csak önálló, teljesen ellenőrzött APK-t fogad el).
+     */
+    val allowSystemVerifiedSplits: Boolean = false,
 )
 
 enum class Check { SIZE, SHA256, PROVIDER_DIGEST, APK_STRUCTURE, SIGNATURE, SIGNER_IDENTITY, PACKAGE_NAME, VERSION_CODE, MIN_SDK, TARGET_SDK, ABI, SPLIT_SET }
@@ -84,8 +91,13 @@ data class VerificationReport(
     val splitFacts: List<ApkFacts>,
     val nativeAbis: Set<String>,
     val findings: List<Finding>,
-    /** Az összes állomány adatai a bemenet sorrendjében (csak teljes, sikeres vizsgálat után). */
-    val fileFacts: List<ApkFacts> = emptyList(),
+    /**
+     * Az összes állomány adatai a bemenet sorrendjében (csak teljes, sikeres vizsgálat után). `null` = a rendszerre
+     * bízott ellenőrzésű split (D-128).
+     */
+    val fileFacts: List<ApkFacts?> = emptyList(),
+    /** Hány kiegészítő állomány (split) ellenőrzését végzi csak a rendszer a telepítéskor (D-128). */
+    val systemVerifiedSplits: Int = 0,
 ) {
     val isInstallable: Boolean get() = facts != null && findings.none { it.severity == Severity.CRITICAL }
 
@@ -165,42 +177,58 @@ class ApkVerifier(private val inspector: ApkInspector) {
             return VerificationReport(integrity.items, CheckStatus.NOT_CHECKED, SignerIdentity.NOT_CHECKED, emptyList(), null, emptyList(), nativeAbis, findings)
         }
 
-        // 1. szint: technikai érvényesség (az eszköz saját verifierje).
-        val inspected = mutableListOf<ApkFacts>()
+        // 1. szint: technikai érvényesség (az eszköz saját verifierje). Split-készletnél az ELSŐ állomány az alap-APK (a
+        // választás sorrendje), a többi a kiegészítő állomány.
+        val inspected = arrayOfNulls<ApkFacts>(files.size)
         var signatureValid = CheckStatus.OK
-        for (file in files) {
+        var systemVerified = 0
+        for ((index, file) in files.withIndex()) {
             when (val result = inspector.inspect(file.file)) {
-                is ApkInspection.Invalid -> {
+                is ApkInspection.Valid -> inspected[index] = result.facts
+                is ApkInspection.Invalid -> if (index > 0 && context.allowSystemVerifiedSplits) {
+                    // A rendszer elemzője az önálló splitet nem dolgozza fel; a csomagnevét, a verziókódját és az alap-APK-éval
+                    // pontosan egyező aláíróját a rendszer ellenőrzi a telepítéskor, eltérésnél az egész készletet
+                    // elutasítja (D-128). A sértetlenséget (méret, SHA-256, ZIP-szerkezet) az 5. lépés már ellenőrizte.
+                    systemVerified++
+                } else {
                     signatureValid = CheckStatus.FAILED
                     findings += Finding(FindingKind.INVALID_SIGNATURE, Severity.CRITICAL, result.reason)
                 }
-                is ApkInspection.Valid -> inspected += result.facts
             }
         }
-        if (findings.any { it.severity == Severity.CRITICAL } || inspected.size != files.size) {
-            return VerificationReport(integrity.items, signatureValid, SignerIdentity.NOT_CHECKED, emptyList(), null, inspected, nativeAbis, findings)
+        val fileFacts = inspected.toList()
+        val base = fileFacts.first()
+        val splits = fileFacts.drop(1).filterNotNull()
+        if (findings.any { it.severity == Severity.CRITICAL } || base == null) {
+            return VerificationReport(integrity.items, signatureValid, SignerIdentity.NOT_CHECKED, emptyList(), null, splits, nativeAbis, findings)
         }
         val integrityItems = integrity.items
 
         val compatibility = mutableListOf<CheckItem>()
-        val base = inspected.singleOrNull { it.splitName == null }
-        val splits = inspected.filter { it.splitName != null }
+        if (base.splitName != null) {
+            // Az első állomány nem önálló alap-APK (pl. egyetlen, önmagában nem telepíthető split).
+            compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.FAILED)
+            findings += Finding(FindingKind.SPLIT_SET_INCONSISTENT, Severity.CRITICAL, "alap-APK nélküli split")
+            return VerificationReport(integrityItems, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, null, splits, nativeAbis, findings)
+        }
         if (files.size > 1) {
-            val consistent = base != null &&
-                splits.all { it.packageName == base.packageName && it.versionCode == base.versionCode && it.signers.current == base.signers.current } &&
-                splits.map { it.splitName }.distinct().size == splits.size
+            // Ahol a rendszer a splitet feldolgozza (pl. tesztkörnyezet), ott mi is összevetjük az alap-APK-val.
+            val consistent = splits.all {
+                it.splitName != null && it.packageName == base.packageName && it.versionCode == base.versionCode && it.signers.current == base.signers.current
+            } && splits.map { it.splitName }.distinct().size == splits.size
             if (!consistent) {
                 compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.FAILED)
                 findings += Finding(FindingKind.SPLIT_SET_INCONSISTENT, Severity.CRITICAL)
                 return VerificationReport(integrityItems, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, base, splits, nativeAbis, findings)
             }
-            compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.OK, splits.joinToString { it.splitName.orEmpty() })
-        } else if (base == null) {
-            // Egyetlen fájl, de split: önmagában nem telepíthető.
-            findings += Finding(FindingKind.SPLIT_SET_INCONSISTENT, Severity.CRITICAL, "alap-APK nélküli split")
-            return VerificationReport(integrityItems, signatureValid, SignerIdentity.NOT_CHECKED, compatibility, null, splits, nativeAbis, findings)
+            if (systemVerified > 0) {
+                compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.WARNING, systemVerified.toString())
+                findings += Finding(FindingKind.SPLITS_VERIFIED_BY_SYSTEM, Severity.WARNING, systemVerified.toString())
+            } else {
+                compatibility += CheckItem(Check.SPLIT_SET, CheckStatus.OK, splits.joinToString { it.splitName.orEmpty() })
+            }
         }
-        val facts = checkNotNull(base)
+        val facts = base
 
         // Csomagazonosító.
         val expectedPackage = context.expectedPackageName ?: context.installed?.packageName
@@ -267,7 +295,7 @@ class ApkVerifier(private val inspector: ApkInspector) {
             facts.signers.current.joinToString(),
         )
 
-        return VerificationReport(integrityItems, signatureValid, identity, compatibility, facts, splits, nativeAbis, findings, inspected)
+        return VerificationReport(integrityItems, signatureValid, identity, compatibility, facts, splits, nativeAbis, findings, fileFacts, systemVerified)
     }
 
     private fun identity(signers: SignerInfo, context: VerificationContext, findings: MutableList<Finding>): SignerIdentity {

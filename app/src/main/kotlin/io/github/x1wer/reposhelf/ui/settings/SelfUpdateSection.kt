@@ -39,6 +39,7 @@ import io.github.x1wer.reposhelf.ui.common.startSafely
 import io.github.x1wer.reposhelf.ui.safety.WarningCard
 import io.github.x1wer.reposhelf.ui.safety.labelRes
 import kotlinx.coroutines.launch
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouchGuard
 
 /**
  * A RepoShelf saját frissítése (C. 14.): kézi ellenőrzés, opt-in automatikus ellenőrzés, letöltés és ellenőrzés,
@@ -139,7 +140,7 @@ fun SelfUpdatePrompt() {
         onDismissRequest = { answer(false) },
         title = { Text(stringResource(R.string.self_prompt_title)) },
         text = { Text(stringResource(R.string.self_prompt_text, BuildConfig.SELF_UPDATE_REPO)) },
-        confirmButton = { TextButton(onClick = { answer(true) }) { Text(stringResource(R.string.self_prompt_yes)) } },
+        confirmButton = { ObscuredTouchGuard(); TextButton(onClick = { answer(true) }) { Text(stringResource(R.string.self_prompt_yes)) } },
         dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.self_prompt_no)) } },
     )
 }

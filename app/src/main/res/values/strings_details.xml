@@ -161,4 +161,11 @@
     <string name="action_add_shortcut">Add shortcut</string>
     <string name="shortcut_requested">Shortcut requested – confirm it in the launcher.</string>
     <string name="shortcut_unsupported">Your launcher does not support adding shortcuts.</string>
+    <string name="pre_format_split_set_system">This release is a split APK set (a base package plus separate split files). RepoShelf fully checks the base package; the split files are checked only by Android itself during installation.</string>
+    <string name="split_notice">Split APK set: RepoShelf has fully checked the base package. The other files of the set are checked only by Android during installation (it rejects the whole set if their package, version or signer differs). Only install an app this way if you trust it.</string>
+    <string name="split_confirm_title">Install a split APK set?</string>
+    <string name="split_confirm_text">A split APK set will be installed. Its extra files can only be checked by Android’s own check during installation, not by RepoShelf beforehand. Only install trusted, verified apps this way!</string>
+    <string name="split_confirm_install">Install anyway</string>
+    <string name="finding_splits_verified_by_system">The split files of the set are checked only by Android during installation (RepoShelf could not check them beforehand).</string>
+
 </resources>

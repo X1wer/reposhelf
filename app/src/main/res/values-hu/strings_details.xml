@@ -161,4 +161,11 @@
     <string name="action_add_shortcut">Parancsikon hozzáadása</string>
     <string name="shortcut_requested">Parancsikon kérve – erősítsd meg a kezdőképernyőn.</string>
     <string name="shortcut_unsupported">A kezdőképernyő-alkalmazásod nem támogatja a parancsikonok hozzáadását.</string>
+    <string name="pre_format_split_set_system">Ez a kiadás split-APK-készlet (alapcsomag és külön kiegészítő állományok). A RepoShelf az alapcsomagot teljesen ellenőrzi; a kiegészítő állományokat csak maga az Android ellenőrzi a telepítéskor.</string>
+    <string name="split_notice">Split-APK-készlet: a RepoShelf az alapcsomagot teljesen ellenőrizte. A készlet többi állományát csak az Android ellenőrzi a telepítéskor (ha a csomagjuk, a verziójuk vagy az aláírójuk eltér, az egész készletet elutasítja). Így csak megbízható alkalmazást telepíts.</string>
+    <string name="split_confirm_title">Telepíted a split-APK-készletet?</string>
+    <string name="split_confirm_text">Split-APK-készlet telepítése fog történni. Ennek ellenőrzése csak a rendszer telepítéskori ellenőrzésére támaszkodhat, a RepoShelf előre nem tudja ellenőrizni. Csak megbízható, ellenőrzött alkalmazást telepíts így!</string>
+    <string name="split_confirm_install">Telepítés így is</string>
+    <string name="finding_splits_verified_by_system">A készlet kiegészítő állományait csak az Android ellenőrzi a telepítéskor (a RepoShelf előre nem tudta ellenőrizni).</string>
+
 </resources>

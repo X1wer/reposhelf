@@ -76,8 +76,9 @@ object WarningClassifier {
                 FindingKind.UNEXPECTED_FORMAT -> WarningCategory.UNEXPECTED_FORMAT to Severity.INFO
                 FindingKind.FIRST_SEEN_SIGNER, FindingKind.UNVERIFIABLE_SOURCE -> WarningCategory.UNVERIFIABLE_SOURCE to Severity.INFO
                 // Tájékoztató vagy normál állapot, nem biztonsági figyelmeztetés.
+                // A split-készlet rendszerre bízott ellenőrzése: a telepítés előtti megerősítés jelzi, nem tárolt riasztás (D-128).
                 FindingKind.REPO_RENAMED, FindingKind.NO_PROVIDER_DIGEST, FindingKind.SAME_VERSION, FindingKind.PRERELEASE,
-                FindingKind.NO_INSTALLABLE_RELEASE -> continue
+                FindingKind.NO_INSTALLABLE_RELEASE, FindingKind.SPLITS_VERIFIED_BY_SYSTEM -> continue
             }
             val existing = result[category]
             // Ugyanazon eseten belül a súlyosabb marad.

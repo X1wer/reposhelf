@@ -387,6 +387,7 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
             pinnedSignerCerts = subject.catalogApp?.signingCertSha256.orEmpty(),
             minVersionCode = subject.catalogApp?.minVersionCode,
             fromCatalog = subject.catalogApp != null,
+            allowSystemVerifiedSplits = true,
         )
     }
 
@@ -467,9 +468,14 @@ class DetailsViewModel(private val key: DetailsKey, private val container: AppCo
         }
     }
 
-    fun onConfirmInstall() {
+    /**
+     * [splitRiskAccepted]: a felhasználó a megerősítő ablakban kifejezetten elfogadta, hogy a split-készlet kiegészítő
+     * állományait csak a rendszer ellenőrzi (D-128). Enélkül ilyen készlet nem települ.
+     */
+    fun onConfirmInstall(splitRiskAccepted: Boolean = false) {
         val verified = _state.value.install as? InstallUiState.Verified ?: return
         if (_state.value.installBlockedByRepo) return
+        if (verified.prepared.report.systemVerifiedSplits > 0 && !splitRiskAccepted) return
         val target = target() ?: return
         viewModelScope.launch {
             historyFrom = _state.value.installed?.let { Version(it.versionName, it.versionCode) }

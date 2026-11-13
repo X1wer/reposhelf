@@ -144,4 +144,11 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.work.testing)
+
+    // Műszeres tesztek (az átfedésvédelem a valódi rendszeren, D-127). Futtatás: lásd CLAUDE.md (am instrument, mert a
+    // connectedDebugAndroidTest a végén eltávolítaná az appot az adataival együtt).
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.kotlin.test.junit)
 }

@@ -15,6 +15,14 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouchNotice
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouches
+import kotlinx.coroutines.flow.update
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,27 +43,33 @@ class MainActivity : ComponentActivity() {
     /** Értesítésből kért megnyitás: a saját frissítés (Beállítások). */
     private val openSelf = MutableStateFlow(false)
 
+    /** Az átfedés miatt eldobott érintések (gesztusok) száma (D-127): a tájékoztató sáv jelzése; a műszeres teszt is ezt olvassa. */
+    internal val droppedObscuredTouches = MutableStateFlow(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Az exportált indító-activity bejövő intentje megbízhatatlan: a Navigation belső deep link extráit eltávolítjuk,
         // mielőtt a navigációs gráf feldolgozhatná őket (IntentSanitizer).
         IntentSanitizer.sanitize(intent)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Átfedés (tapjacking) elleni védelem a biztonsági döntések gombjainál (telepítés, figyelmeztetés nyugtázása, a
-        // repó-azonosság elfogadása): Android 12-től a nem rendszer-átfedések nem látszanak, amíg az app előtérben van.
-        // A régebbi rendszereken a telepítés végső jóváhagyása a rendszer saját, védett ablaka.
+        // Átfedés (tapjacking) elleni védelem (D-123, D-127): Android 12-től a nem rendszer-átfedések nem látszanak, amíg az
+        // app előtérben van; Android 9–11-en a takart helyre érkező érintést a dispatchTouchEvent dobja el.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setHideOverlayWindows(true)
         if (savedInstanceState == null) handleOpenIntent(intent)
         setContent {
             RepoShelfTheme {
                 val request by openTracked.collectAsState()
                 val selfRequest by openSelf.collectAsState()
-                RepoShelfApp(
-                    openTrackedRequest = request,
-                    onOpenHandled = { openTracked.value = null },
-                    openSelfUpdateRequest = selfRequest,
-                    onOpenSelfUpdateHandled = { openSelf.value = false },
-                )
+                val dropped by droppedObscuredTouches.collectAsState()
+                Box(Modifier.fillMaxSize()) {
+                    RepoShelfApp(
+                        openTrackedRequest = request,
+                        onOpenHandled = { openTracked.value = null },
+                        openSelfUpdateRequest = selfRequest,
+                        onOpenSelfUpdateHandled = { openSelf.value = false },
+                    )
+                    ObscuredTouchNotice(dropped, Modifier.align(Alignment.TopCenter))
+                }
             }
         }
         // A PackageInstaller jóváhagyási felületét csak előtérben lévő activity indíthatja (docs/ARCHITECTURE.md 11.1.).
@@ -72,6 +86,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Android 9–11: az az érintés, amelynek a helyén egy másik alkalmazás ablaka látszik, nem jut el a felülethez (D-127).
+     * A jelző a gesztus minden eseményén azonos (a rendszer a gesztus kezdetekor számolja), így az egész gesztus elveszik.
+     */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ObscuredTouches.shouldDrop(ev.flags)) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) droppedObscuredTouches.update { it + 1 }
+            return false
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onNewIntent(intent: Intent) {

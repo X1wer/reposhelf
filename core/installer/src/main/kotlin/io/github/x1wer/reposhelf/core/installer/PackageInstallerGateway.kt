@@ -138,7 +138,7 @@ class PackageInstallerGateway(
         try {
             installer.openSession(sessionId).use { session ->
                 files.forEachIndexed { index, apk ->
-                    val name = if (apk.splitName == null) "base.apk" else "split_$index.apk"
+                    val name = if (!apk.isSplit) "base.apk" else "split_$index.apk"
                     session.openWrite(name, 0, apk.file.length()).use { out ->
                         apk.file.inputStream().use { it.copyTo(out, BUFFER) }
                         session.fsync(out)

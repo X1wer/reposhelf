@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -30,8 +31,8 @@ class InstallStepsTest {
     private fun facts(code: Long = 20, signers: SignerInfo = SignerInfo(listOf(certA), listOf(certA), false), split: String? = null) =
         ApkFacts(pkg, code, "2.0", 28, 35, split, signers)
 
-    private fun report(facts: ApkFacts?, findings: List<Finding> = emptyList(), fileFacts: List<ApkFacts> = listOfNotNull(facts)) =
-        VerificationReport(emptyList(), CheckStatus.OK, SignerIdentity.MATCHES_INSTALLED, emptyList(), facts, emptyList(), emptySet(), findings, fileFacts)
+    private fun report(facts: ApkFacts?, findings: List<Finding> = emptyList(), fileFacts: List<ApkFacts?> = listOfNotNull(facts), systemVerified: Int = 0) =
+        VerificationReport(emptyList(), CheckStatus.OK, SignerIdentity.MATCHES_INSTALLED, emptyList(), facts, emptyList(), emptySet(), findings, fileFacts, systemVerified)
 
     private val file = DownloadedApk(File("base.apk"), "c".repeat(64), 10, 10, null)
 
@@ -50,9 +51,40 @@ class InstallStepsTest {
         val result = InstallInitiator(port).initiate(r, listOf(split, file), InstallExpectation(pkg, fromCatalog = true), installed(10, certA), canRequestInstalls = true)
         assertEquals(77, assertIs<StepResult.Ok<Int>>(result).value)
         val request = port.request!!
-        assertEquals(listOf(null, "config.arm64_v8a"), request.files.map { it.splitName })
+        assertEquals(listOf(false, true), request.files.map { it.isSplit })
+        assertEquals(listOf("base.apk", "split.apk"), request.files.map { it.file.name })
         assertTrue(request.isUpdate)
         assertEquals(pkg, request.packageName)
+    }
+
+    // ---- D-128: a rendszerre bízott ellenőrzésű split-készlet ----
+
+    @Test
+    fun systemVerifiedSplitSet_isNeverInstalledUnattended() = runTest {
+        val port = RecordingPort()
+        val split = DownloadedApk(File("split.apk"), "d".repeat(64), 5, 5, null)
+        val r = report(facts(), fileFacts = listOf(facts(), null), systemVerified = 1)
+        val result = InstallInitiator(port).initiate(r, listOf(file, split), InstallExpectation(pkg, true), installed(10, certA), true, unattended = true)
+        assertIs<StepResult.Ok<Int>>(result)
+        val request = port.request!!
+        assertEquals(listOf(false, true), request.files.map { it.isSplit })
+        assertFalse(request.unattended, "kifejezett megerősítés nélkül nem települhet")
+
+        // Teljesen ellenőrzött készlet (vagy önálló APK) frissítésként mehet beavatkozás nélkül.
+        val plain = RecordingPort()
+        InstallInitiator(plain).initiate(report(facts()), listOf(file), InstallExpectation(pkg, true), installed(10, certA), true, unattended = true)
+        assertTrue(plain.request!!.unattended)
+    }
+
+    @Test
+    fun setWithoutExactlyOneBase_isBlocked() = runTest {
+        val port = RecordingPort()
+        val split = DownloadedApk(File("split.apk"), "d".repeat(64), 5, 5, null)
+        // Két „alap” (két önálló APK egy munkamenetben) nem mehet a rendszerhez.
+        val twoBases = report(facts(), fileFacts = listOf(facts(), facts()))
+        val blocked = InstallInitiator(port).initiate(twoBases, listOf(file, split), InstallExpectation(pkg, true), null, true)
+        assertEquals(FindingKind.SPLIT_SET_INCONSISTENT, assertIs<StepResult.Blocked>(blocked).findings.single().kind)
+        assertNull(port.request)
     }
 
     @Test

@@ -5,6 +5,8 @@ package io.github.x1wer.reposhelf
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.MotionEvent
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouches
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -89,5 +91,34 @@ class ComponentHardeningTest {
         assertEquals("false", network.getAttribute("cleartextTrafficPermitted"))
         val anchors = network.children("trust-anchors").single().children("certificates").map { it.getAttribute("src") }
         assertEquals(listOf("system"), anchors)
+    }
+
+    @Test
+    fun obscuredTouches_areDroppedOnlyBelowAndroid12() {
+        val obscured = MotionEvent.FLAG_WINDOW_IS_OBSCURED
+        val partial = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED
+        for (sdk in 28..30) {
+            assertTrue(ObscuredTouches.shouldDrop(obscured, sdk))
+            assertTrue(ObscuredTouches.shouldDrop(obscured or partial, sdk))
+            // Az érintés helyét semmi nem takarja (pl. csevegőbuborék a képernyő másik részén): nem tiltunk.
+            assertFalse(ObscuredTouches.shouldDrop(partial, sdk))
+            assertFalse(ObscuredTouches.shouldDrop(0, sdk))
+        }
+        // Android 12-től a rendszer véd (setHideOverlayWindows, az idegen ablakon átmenő érintés tiltása).
+        for (sdk in 31..37) assertFalse(ObscuredTouches.shouldDrop(obscured, sdk))
+    }
+
+    @Test
+    fun everySeparateWindow_isGuardedAgainstOverlays() {
+        // A párbeszédablakok és a lenyíló menük külön ablakban vannak: a fő ablak szűrése nem védi őket (D-127).
+        val window = Regex("""\b(AlertDialog|BasicAlertDialog|Dialog|DropdownMenu|ModalBottomSheet|Popup)\(""")
+        val sources = File("src/main/kotlin").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        assertTrue(sources.size > 20)
+        for (file in sources) {
+            val text = file.readText()
+            val windows = window.findAll(text).count()
+            val guards = Regex("""ObscuredTouchGuard\(\)""").findAll(text).count()
+            assertTrue(guards >= windows, "${file.name}: $windows külön ablak, $guards védelem")
+        }
     }
 }

@@ -55,8 +55,8 @@ private const val ARCHIVE_SIGNING_FLAGS = PackageManager.GET_SIGNING_CERTIFICATE
  * begyűjtésekor valódi kriptográfiai ellenőrzést végez, ugyanazokkal a szabályokkal, mint a telepítés.
  * Érvénytelen vagy nem ellenőrizhető APK-ra `null`-t ad, `signingInfo` nélkül pedig nem fogadjuk el.
  *
- * Ismert korlát: az elemzés jelenleg az alkalmazás folyamatán belül fut. A külön folyamatban, időkorláttal történő
- * futtatás (D-031) a 8. munkamenet (biztonsági audit) feladata.
+ * A termékben ez a külön folyamatban, időkorláttal futó [IsolatedApkInspector] mögött fut (D-113); közvetlenül csak a
+ * tartalék út és a műszeres tesztek hívják. Az önálló split-APK-t a rendszer nem dolgozza fel (D-128).
  */
 class PlatformApkInspector(private val context: Context) : ApkInspector {
     override fun inspect(file: File): ApkInspection {

@@ -125,4 +125,6 @@
     <string name="notif_self_ready_title">A RepoShelf frissítése telepítésre kész</string>
     <string name="notif_self_confirm_title">Hagyd jóvá a RepoShelf frissítését (%1$s)</string>
     <string name="notif_self_installed_title">A RepoShelf frissült</string>
+    <string name="obscured_touch_notice">Egy másik alkalmazás (például képernyőszűrő vagy éjszakai fény) takarja a RepoShelfet, ezért a biztonságod érdekében ott nem fogadja el az érintést. Kapcsold ki azt az alkalmazást, majd próbáld újra.</string>
+
 </resources>

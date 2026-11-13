@@ -31,6 +31,8 @@ data class InstallTarget(
     val pinnedSignerCerts: List<String>,
     val minVersionCode: Long?,
     val fromCatalog: Boolean,
+    /** Split-készlet kiegészítő állományainak ellenőrzése a rendszerre bízható (D-128); a saját frissítésnél nem. */
+    val allowSystemVerifiedSplits: Boolean = false,
 )
 
 sealed interface PreparedInstall {
@@ -113,6 +115,7 @@ class InstallCoordinator(
             minVersionCode = target.minVersionCode,
             installed = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } },
             device = device,
+            allowSystemVerifiedSplits = target.allowSystemVerifiedSplits,
         )
         var report = withContext(Dispatchers.IO) { verifier.checkSignature(files, integrity, context(target.expectedPackageName)) }
         // Ha a csomagnév csak az APK-ból derült ki, a telepített példánnyal és a rögzített aláíróval is össze kell vetni.

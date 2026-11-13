@@ -207,6 +207,61 @@ class ApkVerifierTest {
         assertTrue(FindingKind.SPLIT_SET_INCONSISTENT in kinds(mixedVersions))
     }
 
+    /** Mint a valódi rendszer (API 28 és 37, műszeres teszttel ellenőrizve): az önálló split-APK-t nem dolgozza fel. */
+    private val deviceLikeVerifier = ApkVerifier { file ->
+        when (val result = inspector.inspect(file)) {
+            is ApkInspection.Valid -> if (result.facts.splitName != null) ApkInspection.Invalid("split") else result
+            is ApkInspection.Invalid -> result
+        }
+    }
+
+    // ---- D-128 (Q-011): a split-készlet kiegészítő állományait a rendszer ellenőrzi; az alap-APK-t mi, teljesen ----
+
+    @Test
+    fun splitSetOnDevice_leavesOnlyTheSplitsToTheSystem_whenAllowed() {
+        val base = downloaded(fixture("fixture-split-base-v4-keyA.apk"))
+        val split = downloaded(fixture("fixture-split-config.arm64_v8a-v4-keyA.apk"))
+        val allowed = context(device = armDevice).copy(allowSystemVerifiedSplits = true)
+        val ok = deviceLikeVerifier.verify(listOf(base, split), allowed)
+        assertTrue(ok.isInstallable, ok.findings.toString())
+        assertEquals(1, ok.systemVerifiedSplits)
+        assertEquals(Severity.WARNING, ok.findings.single { it.kind == FindingKind.SPLITS_VERIFIED_BY_SYSTEM }.severity)
+        assertEquals(listOf(false, true), ok.fileFacts.map { it == null })
+        assertEquals(CheckStatus.WARNING, ok.compatibility.single { it.check == Check.SPLIT_SET }.status)
+        assertEquals("io.github.x1wer.fixture", ok.facts!!.packageName)
+
+        // Alapértelmezés (pl. a saját frissítés): a telepítés előtt nem ellenőrizhető split elutasítás.
+        val strict = deviceLikeVerifier.verify(listOf(base, split), context(device = armDevice))
+        assertFalse(strict.isInstallable)
+        assertTrue(FindingKind.INVALID_SIGNATURE in kinds(strict))
+        assertEquals(0, strict.systemVerifiedSplits)
+    }
+
+    @Test
+    fun splitSetOnDevice_baseApkIsStillFullyChecked() {
+        val base = downloaded(fixture("fixture-split-base-v4-keyA.apk"))
+        val split = downloaded(fixture("fixture-split-config.arm64_v8a-v4-keyA.apk"))
+        val allowed = context(device = armDevice).copy(allowSystemVerifiedSplits = true)
+        // Az alap-APK-nak az elsőnek és teljesen ellenőrizhetőnek kell lennie.
+        assertFalse(deviceLikeVerifier.verify(listOf(split, base), allowed).isInstallable)
+        assertFalse(deviceLikeVerifier.verify(listOf(split), allowed).isInstallable)
+        val tamperedBase = deviceLikeVerifier.verify(listOf(downloaded(fixture("fixture-v2-tampered.apk")), split), allowed)
+        assertFalse(tamperedBase.isInstallable)
+        // Az alap-APK aláírójára minden korábbi szabály vonatkozik (katalógusban rögzített, telepített, helyben rögzített).
+        val pinnedB = deviceLikeVerifier.verify(listOf(base, split), allowed.copy(pinnedSignerCerts = listOf(certB)))
+        assertTrue(FindingKind.SIGNER_MISMATCH_PINNED in kinds(pinnedB))
+        val installedB = deviceLikeVerifier.verify(listOf(base, split), allowed.copy(installed = installedV(3, certB)))
+        assertTrue(FindingKind.SIGNER_CHANGED in kinds(installedB))
+        val downgrade = deviceLikeVerifier.verify(listOf(base, split), allowed.copy(installed = installedV(9, certA)))
+        assertTrue(FindingKind.VERSION_DOWNGRADE in kinds(downgrade))
+        // A sérült split letöltése (méret) a rendszer előtt, nálunk bukik el.
+        val truncatedSplit = deviceLikeVerifier.verify(listOf(base, downloaded(split.file, expectedSize = split.size + 1)), allowed)
+        assertTrue(FindingKind.SIZE_MISMATCH in kinds(truncatedSplit))
+        // Ahol a split elemezhető (tesztkörnyezet), ott eltérő verziónál mi is elutasítjuk.
+        val mixed = verifier.verify(listOf(downloaded(fixture("fixture-v2-keyA.apk")), split), allowed)
+        assertTrue(FindingKind.SPLIT_SET_INCONSISTENT in kinds(mixed))
+    }
+
     @Test
     fun targetSdkFloor_followsPlatform() {
         assertEquals(24, ApkVerifier.minimumInstallableTargetSdk(37))

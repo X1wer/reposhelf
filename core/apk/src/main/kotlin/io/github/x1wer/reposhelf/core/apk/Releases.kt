@@ -36,7 +36,11 @@ data class PreliminaryCheck(val check: PreCheck, val status: CheckStatus, val de
 enum class PreCheck { FORMAT, ABI, ANDROID_VERSION, STORAGE, RELEASE_TYPE }
 
 object PreliminaryCompatibility {
-    /** A [PreCheck.FORMAT] részlete, ha a kiadás csak külön állományokra bontott split-APK-készletet tartalmaz. */
+    /**
+     * A [PreCheck.FORMAT] részlete, ha a kiadás csak külön állományokra bontott split-APK-készletet tartalmaz: telepíthető,
+     * de a kiegészítő állományokat csak a rendszer ellenőrzi ([CheckStatus.WARNING], D-128), vagy a hívó nem fogadja el
+     * ([CheckStatus.FAILED]).
+     */
     const val DETAIL_SPLIT_SET = "split-set"
 
     /**
@@ -51,7 +55,8 @@ object PreliminaryCompatibility {
             else -> emptyList()
         }
         checks += when (selection) {
-            is AssetSelection.Single, is AssetSelection.SplitSet -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.OK)
+            is AssetSelection.Single -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.OK)
+            is AssetSelection.SplitSet -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.WARNING, DETAIL_SPLIT_SET)
             is AssetSelection.Ambiguous -> PreliminaryCheck(PreCheck.FORMAT, CheckStatus.WARNING, "${selection.candidates.size}")
             is AssetSelection.NoInstallable -> PreliminaryCheck(
                 PreCheck.FORMAT, CheckStatus.FAILED,

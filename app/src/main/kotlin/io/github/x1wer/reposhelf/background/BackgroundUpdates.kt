@@ -123,6 +123,8 @@ class BackgroundUpdates(
             pinnedSignerCerts = catalogApp?.signingCertSha256.orEmpty(),
             minVersionCode = catalogApp?.minVersionCode,
             fromCatalog = catalogApp != null,
+            // A split-készlet letölthető és ellenőrizhető a háttérben; beavatkozás nélkül viszont nem települ (D-128).
+            allowSystemVerifiedSplits = true,
         )
         val provider = container.sourceProviders.get(app.repo.provider) ?: return
         readyUpdates[app.id]?.takeIf { it.releaseId != release.id }?.let { stale ->

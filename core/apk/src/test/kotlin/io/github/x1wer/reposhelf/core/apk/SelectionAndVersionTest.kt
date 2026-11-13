@@ -99,8 +99,7 @@ class SelectionAndVersionTest {
     @Test
     fun splitSet_includesOnlyMatchingAbiSplit() {
         val assets = listOf("base.apk", "split_config.arm64_v8a.apk", "split_config.x86_64.apk", "split_config.hu.apk").map { asset(it) }
-        // A készlet felismerése megvan (allowSplitSets), de a termékben ki van kapcsolva (D-073): lásd a következő tesztet.
-        val set = assertIs<AssetSelection.SplitSet>(AssetSelector.select(assets, x86Emulator, null, allowSplitSets = true))
+        val set = assertIs<AssetSelection.SplitSet>(AssetSelector.select(assets, x86Emulator, null))
         assertEquals("base.apk", set.base.name)
         assertEquals(listOf("split_config.x86_64.apk", "split_config.hu.apk"), set.splits.map { it.name })
     }
@@ -176,16 +175,22 @@ class SelectionAndVersionTest {
         assertEquals("app-release.apk", picked.asset.name)
     }
 
-    // ---- DL-06 / D-073: a külön állományokra bontott split-készlet letöltés nélkül, érthető okkal elutasítva ----
+    // ---- D-128 (Q-011): a split-készlet telepíthető, de előzetesen jelezve; az önálló APK elsőbbséget kap ----
 
     @Test
-    fun splitSet_isRejectedBeforeDownload_andAStandaloneApkIsPreferred() {
-        assertEquals(false, AssetSelector.SPLIT_SETS_SUPPORTED)
+    fun splitSet_isSelectedWithAWarning_andAStandaloneApkIsPreferred() {
+        assertEquals(true, AssetSelector.SPLIT_SETS_SUPPORTED)
         val splitOnly = listOf("base.apk", "split_config.arm64_v8a.apk", "split_config.x86_64.apk", "split_config.hu.apk").map { asset(it) }
-        val none = assertIs<AssetSelection.NoInstallable>(AssetSelector.select(splitOnly, x86Emulator, null))
+        val release = Release(1, "v1", "v1", false, false, null, null, null, null, null, splitOnly)
+        val set = assertIs<AssetSelection.SplitSet>(AssetSelector.select(splitOnly, x86Emulator, null))
+        val warned = PreliminaryCompatibility.assess(set, release, DeviceProfile(37, x86Emulator, null)).first { it.check == PreCheck.FORMAT }
+        assertEquals(CheckStatus.WARNING, warned.status)
+        assertEquals(PreliminaryCompatibility.DETAIL_SPLIT_SET, warned.detail)
+
+        // A hívó (pl. a saját frissítés) a készletet el is utasíthatja: ekkor letöltés nélkül, érthető okkal.
+        val none = assertIs<AssetSelection.NoInstallable>(AssetSelector.select(splitOnly, x86Emulator, null, allowSplitSets = false))
         assertEquals(4, none.rejected.size)
         assertTrue(none.rejected.all { it.reason == AssetRejection.SPLIT_SET })
-        val release = Release(1, "v1", "v1", false, false, null, null, null, null, null, splitOnly)
         val format = PreliminaryCompatibility.assess(none, release, DeviceProfile(37, x86Emulator, null)).first { it.check == PreCheck.FORMAT }
         assertEquals(CheckStatus.FAILED, format.status)
         assertEquals(PreliminaryCompatibility.DETAIL_SPLIT_SET, format.detail)
@@ -193,5 +198,8 @@ class SelectionAndVersionTest {
         val mixed = splitOnly + asset("app-universal-release.apk")
         val single = assertIs<AssetSelection.Single>(AssetSelector.select(mixed, x86Emulator, null))
         assertEquals("app-universal-release.apk", single.asset.name)
+        // Az eszközön nem futó önálló APK nem szorítja ki a készletet.
+        val withForeignAbi = splitOnly + asset("app-armeabi-v7a-release.apk")
+        assertIs<AssetSelection.SplitSet>(AssetSelector.select(withForeignAbi, x86Emulator, null))
     }
 }

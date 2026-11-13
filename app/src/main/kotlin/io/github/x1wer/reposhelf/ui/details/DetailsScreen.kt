@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -91,6 +92,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouchGuard
 
 @Composable
 fun DetailsScreen(key: DetailsKey, onBack: () -> Unit) {
@@ -423,7 +425,25 @@ private fun InstallSection(state: DetailsUiState, vm: DetailsViewModel) {
                 is InstallUiState.Verified -> {
                     if (state.readyFromBackground) Text(stringResource(R.string.details_ready_from_background), style = MaterialTheme.typography.bodySmall)
                     Report(install.prepared.report, state.subject?.repo?.path.orEmpty())
-                    Button(onClick = vm::onConfirmInstall) { Text(stringResource(R.string.action_confirm_install)) }
+                    // Split-készlet: a kiegészítő állományokat csak a rendszer ellenőrzi; telepítés előtt kifejezett megerősítés (D-128).
+                    val splitRisk = install.prepared.report.systemVerifiedSplits > 0
+                    var confirmSplits by remember(install) { mutableStateOf(false) }
+                    if (splitRisk) SplitSetNotice()
+                    Button(onClick = { if (splitRisk) confirmSplits = true else vm.onConfirmInstall() }) { Text(stringResource(R.string.action_confirm_install)) }
+                    if (confirmSplits) {
+                        AlertDialog(
+                            onDismissRequest = { confirmSplits = false },
+                            title = { Text(stringResource(R.string.split_confirm_title)) },
+                            text = { Text(stringResource(R.string.split_confirm_text)) },
+                            confirmButton = {
+                                ObscuredTouchGuard()
+                                TextButton(onClick = { confirmSplits = false; vm.onConfirmInstall(splitRiskAccepted = true) }) {
+                                    Text(stringResource(R.string.split_confirm_install))
+                                }
+                            },
+                            dismissButton = { TextButton(onClick = { confirmSplits = false }) { Text(stringResource(R.string.action_cancel)) } },
+                        )
+                    }
                 }
                 is InstallUiState.Blocked -> {
                     Text(stringResource(R.string.install_blocked), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
@@ -511,7 +531,7 @@ private fun Dialogs(state: DetailsUiState, vm: DetailsViewModel, app: RepoShelfA
                     }
                 }
             },
-            confirmButton = {},
+            confirmButton = { ObscuredTouchGuard() },
             dismissButton = { TextButton(onClick = vm::dismissInstallDialog) { Text(stringResource(R.string.action_cancel)) } },
         )
         is InstallUiState.NeedsPermission -> AlertDialog(
@@ -519,6 +539,7 @@ private fun Dialogs(state: DetailsUiState, vm: DetailsViewModel, app: RepoShelfA
             title = { Text(stringResource(R.string.permission_title)) },
             text = { Text(stringResource(R.string.permission_text)) },
             confirmButton = {
+                ObscuredTouchGuard()
                 TextButton(onClick = { startSafely(context, app.container.installedPackages.unknownSourcesSettingsIntent()) }) {
                     Text(stringResource(R.string.action_open_settings))
                 }
@@ -526,6 +547,14 @@ private fun Dialogs(state: DetailsUiState, vm: DetailsViewModel, app: RepoShelfA
             dismissButton = { TextButton(onClick = vm::dismissInstallDialog) { Text(stringResource(R.string.action_cancel)) } },
         )
         else -> Unit
+    }
+}
+
+/** A split-készlet telepítése előtti, kiemelt tájékoztatás (D-128; a felhasználó szövege alapján, Q-011). */
+@Composable
+private fun SplitSetNotice() {
+    Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = MaterialTheme.shapes.small) {
+        Text(stringResource(R.string.split_notice), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(8.dp))
     }
 }
 
@@ -540,8 +569,10 @@ private fun Preliminary(checks: List<PreliminaryCheck>) {
                 PreCheck.FORMAT -> stringResource(
                     when {
                         check.status == CheckStatus.OK -> R.string.pre_format_ok
+                        // Split-készlet: telepíthető, de a kiegészítő állományokat csak a rendszer ellenőrzi (D-128).
+                        check.status == CheckStatus.WARNING && check.detail == PreliminaryCompatibility.DETAIL_SPLIT_SET -> R.string.pre_format_split_set_system
                         check.status == CheckStatus.WARNING -> R.string.pre_format_choose
-                        // A külön állományokra bontott split-készlet nem ellenőrizhető telepítés előtt: az okot kiírjuk.
+                        // A hívó nem fogadja el a split-készletet: az okot kiírjuk.
                         check.detail == PreliminaryCompatibility.DETAIL_SPLIT_SET -> R.string.pre_format_split_set
                         else -> R.string.pre_format_none
                     },
@@ -670,6 +701,7 @@ internal fun findingText(kind: FindingKind): String = stringResource(
         FindingKind.TARGET_SDK_TOO_OLD -> R.string.finding_target_sdk_too_old
         FindingKind.INCOMPATIBLE_ABI -> R.string.finding_incompatible_abi
         FindingKind.SPLIT_SET_INCONSISTENT -> R.string.finding_split_set_inconsistent
+        FindingKind.SPLITS_VERIFIED_BY_SYSTEM -> R.string.finding_splits_verified_by_system
         FindingKind.UNEXPECTED_FORMAT -> R.string.finding_unexpected_format
         FindingKind.PRERELEASE -> R.string.finding_prerelease
         FindingKind.REPO_NOT_FOUND -> R.string.finding_repo_not_found

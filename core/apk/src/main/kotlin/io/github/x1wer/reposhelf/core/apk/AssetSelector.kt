@@ -10,7 +10,10 @@ import io.github.x1wer.reposhelf.core.model.ReleaseAsset
 enum class AssetRejection {
     APP_BUNDLE, SPLIT_ARCHIVE, INCOMPATIBLE_ABI, FILTERED_OUT,
 
-    /** Külön állományokként közzétett split-APK-készlet tagja (alap-APK + `split_*` / `config.*`): nem támogatott (D-073). */
+    /**
+     * Külön állományokként közzétett split-APK-készlet tagja (alap-APK + `split_*` / `config.*`), ha a hívó a készletet
+     * nem fogadja el (`allowSplitSets = false`). Az alkalmazásokra a készlet támogatott (D-128).
+     */
     SPLIT_SET,
 }
 
@@ -42,12 +45,12 @@ object AssetSelector {
     private val BASE_NAME = Regex("(^|[-_.])base\\.apk$", RegexOption.IGNORE_CASE)
 
     /**
-     * A külön állományokként közzétett split-APK-készlet támogatása (D-073). KIKAPCSOLVA: a rendszer csomagelemzője az
-     * önálló split-APK-t nem dolgozza fel, így a splitek aláírását és csomagadatait telepítés ELŐTT nem tudnánk
-     * ellenőrizni. A készletet ezért már a választáskor, letöltés nélkül, érthető okkal elutasítjuk (korábban letöltődött,
-     * és félrevezető „érvénytelen aláírás” hibával bukott el).
+     * A külön állományokként közzétett split-APK-készlet támogatása (D-128, a felhasználó döntése: Q-011). A rendszer
+     * csomagelemzője az önálló split-APK-t nem dolgozza fel, ezért telepítés előtt csak az alap-APK ellenőrizhető
+     * teljesen; a kiegészítő állományok csomagnevét, verziókódját és aláíróját a rendszer ellenőrzi a telepítéskor. Ezt a
+     * felület telepítés előtt kifejezetten jelzi, és beavatkozás nélküli telepítés ilyenkor nincs.
      */
-    const val SPLIT_SETS_SUPPORTED = false
+    const val SPLIT_SETS_SUPPORTED = true
 
     fun select(
         assets: List<ReleaseAsset>,
@@ -82,17 +85,20 @@ object AssetSelector {
             }
         }
 
+        val normalizedDevice = deviceAbis.map(AbiDetector::normalize)
         val set = splitSet(candidates, deviceAbis)
         if (set != null) {
-            if (allowSplitSets) return set
-            // A készlet minden tagja kimarad; ha a kiadásban van más (önálló) APK is, abból választunk.
             val members = candidates.filter { it == set.base || SPLIT_NAME.containsMatchIn(it.name) }
+            val standalone = candidates.filterNot { it in members }
+            // Az eszközön futó önálló (pl. universal) APK telepítés előtt TELJESEN ellenőrizhető, ezért elsőbbséget kap a
+            // készlettel szemben, amelynek a kiegészítő állományait csak a rendszer ellenőrzi (D-128).
+            val standaloneUsable = standalone.any { rank(AbiDetector.detect(it.name), normalizedDevice) != null }
+            if (allowSplitSets && !standaloneUsable) return set
             members.forEach { rejected += RejectedAsset(it, AssetRejection.SPLIT_SET) }
-            candidates = candidates.filterNot { it in members }
+            candidates = standalone
             if (candidates.isEmpty()) return AssetSelection.NoInstallable(rejected)
         }
 
-        val normalizedDevice = deviceAbis.map(AbiDetector::normalize)
         val scored = candidates.mapNotNull { asset ->
             val rank = rank(AbiDetector.detect(asset.name), normalizedDevice)
             if (rank == null) {

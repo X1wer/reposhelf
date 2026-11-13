@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.time.Instant
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouchGuard
 
 /**
  * Exportálás és importálás (C. 25.): a rendszer fájlválasztójával (Storage Access Framework, tárhely-engedély nélkül).
@@ -80,6 +81,7 @@ fun TransferSection(container: AppContainer) {
                 }
             },
             confirmButton = {
+                ObscuredTouchGuard()
                 TextButton(onClick = {
                     pending = null
                     scope.launch { message = applyImport(context, container, p) }

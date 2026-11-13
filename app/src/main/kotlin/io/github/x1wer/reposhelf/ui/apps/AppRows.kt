@@ -51,6 +51,7 @@ import io.github.x1wer.reposhelf.ui.common.formatDateTime
 import io.github.x1wer.reposhelf.ui.common.openUrl
 import io.github.x1wer.reposhelf.ui.common.startSafely
 import io.github.x1wer.reposhelf.ui.common.webUrl
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouchGuard
 
 /** A frissítési állapot szövege (C. 10.); a nem megerősített frissítést „valószínű”-ként jelzi. */
 @Composable
@@ -110,6 +111,7 @@ fun TrackedAppRow(
             Box {
                 IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.action_more)) }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    ObscuredTouchGuard()
                     DropdownMenuItem(text = { Text(stringResource(R.string.action_check_now)) }, onClick = { menuOpen = false; onCheck() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.action_open_repo)) }, onClick = { menuOpen = false; openUrl(context, app.repo.webUrl()) })
                     if (row.installed != null && app.packageName != null) {
@@ -194,7 +196,7 @@ fun TrackedAppRow(
             onDismissRequest = { confirmRemove = false },
             title = { Text(stringResource(R.string.remove_dialog_title, app.displayName)) },
             text = { Text(stringResource(R.string.remove_dialog_text)) },
-            confirmButton = { TextButton(onClick = { confirmRemove = false; onRemove() }) { Text(stringResource(R.string.action_remove)) } },
+            confirmButton = { ObscuredTouchGuard(); TextButton(onClick = { confirmRemove = false; onRemove() }) { Text(stringResource(R.string.action_remove)) } },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.action_cancel)) } },
         )
     }

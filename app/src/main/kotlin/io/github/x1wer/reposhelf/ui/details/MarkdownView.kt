@@ -56,6 +56,7 @@ import io.github.x1wer.reposhelf.core.source.readme.MdBlock
 import io.github.x1wer.reposhelf.core.source.readme.MdImage
 import io.github.x1wer.reposhelf.core.source.readme.MdSpan
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import io.github.x1wer.reposhelf.ui.common.ObscuredTouchGuard
 
 /**
  * Natív, WebView nélküli Markdown-megjelenítés (C. 6.1., D-013). Csak a [MarkdownDocument] korlátozott elemeit ismeri.
@@ -82,6 +83,7 @@ fun MarkdownView(document: MarkdownDocument, showExternalImages: Boolean, onShow
                 }
             },
             confirmButton = {
+                ObscuredTouchGuard()
                 TextButton(onClick = {
                     pendingLink = null
                     openUrl(context, url)

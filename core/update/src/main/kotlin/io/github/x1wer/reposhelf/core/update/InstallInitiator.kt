@@ -11,8 +11,11 @@ import io.github.x1wer.reposhelf.core.model.FindingKind
 import io.github.x1wer.reposhelf.core.model.Severity
 import java.io.File
 
-/** Egy már ellenőrzött állomány, amely a telepítési munkamenetbe kerül. */
-data class VerifiedFile(val file: File, val sha256: String, val splitName: String?)
+/**
+ * Egy már ellenőrzött állomány, amely a telepítési munkamenetbe kerül. [isSplit]: kiegészítő állomány (split); a
+ * rendszerre bízott ellenőrzésű split is ilyen (D-128).
+ */
+data class VerifiedFile(val file: File, val sha256: String, val isSplit: Boolean)
 
 data class InstallRequest(
     /** Az alap-APK az első, utána a splitek. */
@@ -81,10 +84,15 @@ class InstallInitiator(private val port: PackageInstallPort) {
                 return StepResult.Blocked(listOf(Finding(FindingKind.SIGNER_CHANGED, Severity.CRITICAL)))
             }
         }
-        val ordered = files.mapIndexed { i, file -> VerifiedFile(file.file, file.sha256, report.fileFacts[i].splitName) }
-            .sortedBy { it.splitName != null }
-        // Felhasználói beavatkozás nélkül csak frissítés mehet (az első telepítés mindig jóváhagyásos).
-        val request = InstallRequest(ordered, facts.packageName, expectation.fromCatalog, isUpdate = installed != null, unattended = unattended && installed != null)
+        val ordered = files.mapIndexed { i, file -> VerifiedFile(file.file, file.sha256, isSplit = report.fileFacts[i]?.splitName != null || report.fileFacts[i] == null) }
+            .sortedBy { it.isSplit }
+        if (ordered.count { !it.isSplit } != 1) {
+            return StepResult.Blocked(listOf(Finding(FindingKind.SPLIT_SET_INCONSISTENT, Severity.CRITICAL)))
+        }
+        // Felhasználói beavatkozás nélkül csak frissítés mehet (az első telepítés mindig jóváhagyásos), és soha nem olyan
+        // split-készlet, amelynek a kiegészítő állományait csak a rendszer ellenőrzi (D-128: kifejezett megerősítés kell).
+        val allowUnattended = unattended && installed != null && report.systemVerifiedSplits == 0
+        val request = InstallRequest(ordered, facts.packageName, expectation.fromCatalog, isUpdate = installed != null, unattended = allowUnattended)
         return when (val start = port.install(request)) {
             is InstallStart.Committed -> StepResult.Ok(start.sessionId)
             is InstallStart.Failed -> StepResult.Failed(UpdateFailure.InstallStartFailed(start.reason))
