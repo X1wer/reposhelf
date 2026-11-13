@@ -13,6 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import osv_check  # noqa: E402
 import release_tools as rt  # noqa: E402
+import third_party_notices as tpn  # noqa: E402
 
 CHANGELOG = """# Changelog
 
@@ -101,6 +102,52 @@ githubReleaseRuntimeClasspath - Resolved configuration for runtime for variant: 
 </verification-metadata>"""
         self.assertEqual({"junit:junit:4.13.2", "com.android.tools.build:aapt2:9.4.1-14500000"},
                          osv_check.parse_verification_metadata(xml))
+
+
+def _pom(licenses: str = "", parent: str = "", url: str = "") -> str:
+    return (f'<project xmlns="http://maven.apache.org/POM/4.0.0">{parent}'
+            f'{"<url>" + url + "</url>" if url else ""}{licenses}</project>')
+
+
+class ThirdPartyNoticesTest(unittest.TestCase):
+    def _cache(self, root: pathlib.Path, coord: str, pom: str) -> None:
+        group, artifact, version = coord.split(":")
+        folder = root / group / artifact / version / "abc123"
+        folder.mkdir(parents=True)
+        (folder / f"{artifact}-{version}.pom").write_text(pom, encoding="utf-8")
+
+    def test_licenses_are_read_from_pom_or_parent_and_rendered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = pathlib.Path(tmp)
+            self._cache(cache, "org.example:lib:1.0", _pom(
+                "<licenses><license><name>The Apache Software License, Version 2.0</name></license></licenses>",
+                url="https://example.org/lib"))
+            self._cache(cache, "org.example:parent:2", _pom(
+                "<licenses><license><name>BSD-2-Clause</name></license></licenses>", url="https://example.org/p"))
+            self._cache(cache, "org.example:child:2", _pom(
+                parent="<parent><groupId>org.example</groupId><artifactId>parent</artifactId><version>2</version></parent>"))
+            rows = tpn.collect({"org.example:lib:1.0", "org.example:child:2"}, cache)
+            self.assertEqual([("child", "BSD-2-Clause", "https://example.org/p"), ("lib", "Apache-2.0", "https://example.org/lib")],
+                             [(r["artifact"], r["license"], r["url"]) for r in rows])
+            block = tpn.render(rows)
+            self.assertIn("2 components (Apache-2.0: 1, BSD-2-Clause: 1).", block)
+            self.assertIn("| `org.example:lib` | 1.0 | Apache-2.0 | <https://example.org/lib> |", block)
+            doc = f"# Notices\n\n{tpn.BEGIN}\nold\n{tpn.END}\n\n## Tail\n"
+            self.assertEqual(f"# Notices\n\n{block}\n\n## Tail\n", tpn.replace_block(doc, block))
+
+    def test_unknown_or_missing_license_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = pathlib.Path(tmp)
+            self._cache(cache, "org.example:gpl2:1", _pom("<licenses><license><name>GPL-2.0-only</name></license></licenses>"))
+            self._cache(cache, "org.example:none:1", _pom())
+            with self.assertRaises(tpn.NoticeError) as error:
+                tpn.collect({"org.example:gpl2:1", "org.example:none:1"}, cache)
+            self.assertIn("UNKNOWN(GPL-2.0-only)", str(error.exception))
+            self.assertIn("MISSING", str(error.exception))
+            with self.assertRaises(tpn.NoticeError):
+                tpn.collect({"org.example:absent:1"}, cache)
+            with self.assertRaises(tpn.NoticeError):
+                tpn.replace_block("no markers", "x")
 
 
 if __name__ == "__main__":
