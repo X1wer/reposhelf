@@ -6,6 +6,18 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// A katalógus-aláírás megbízható kulcsai (keyId:base64 SPKI, vesszővel); üres vagy hibás lista nem fogadható el.
+val catalogKeys: String = providers.gradleProperty("reposhelf.catalog.publicKeys").orNull ?: ""
+require(catalogKeys.isNotBlank() && catalogKeys.split(',').all { it.trim().matches(Regex("^[a-z0-9][a-z0-9._-]{1,63}:[A-Za-z0-9+/=]{40,400}$")) }) {
+    "Érvénytelen vagy hiányzó reposhelf.catalog.publicKeys"
+}
+
+/** TESZT-kulcs a listában (az azonosítója tartalmazza a „test” szót): kiadható buildbe nem kerülhet. */
+val testCatalogKeyIds: List<String> = catalogKeys.split(',').map { it.substringBefore(':').trim() }.filter { it.contains("test", ignoreCase = true) }
+
+/** Csak teszteléshez (pl. release-szerű próba-build a valódi kulcs elkészülte előtt): -Preposhelf.allowTestCatalogKey=true */
+val allowTestCatalogKey: Boolean = providers.gradleProperty("reposhelf.allowTestCatalogKey").orNull == "true"
+
 android {
     // Ideiglenes azonosító (docs/DECISIONS.md D-002, Q-004): az első nyilvános kiadásig változtatható.
     namespace = "io.github.x1wer.reposhelf"
@@ -31,11 +43,6 @@ android {
         )
         // Ennél régebbi katalógust a kliens nem fogad el (D-022). Legalább a beépített katalógus sorszáma.
         buildConfigField("long", "MIN_CATALOG_SERIAL", "1L")
-        // A katalógus-aláírás megbízható kulcsai (keyId:base64 SPKI, vesszővel); üres lista nem fogadható el.
-        val catalogKeys = providers.gradleProperty("reposhelf.catalog.publicKeys").orNull ?: ""
-        require(catalogKeys.isNotBlank() && catalogKeys.split(',').all { it.trim().matches(Regex("^[a-z0-9][a-z0-9._-]{1,63}:[A-Za-z0-9+/=]{40,400}$")) }) {
-            "Érvénytelen vagy hiányzó reposhelf.catalog.publicKeys"
-        }
         buildConfigField("String", "CATALOG_PUBLIC_KEYS", "\"$catalogKeys\"")
         // Saját frissítés (C. 14., D-062): a saját repó és a release-aláíró elvárt SHA-256 ujjlenyomata(i) build-paraméter
         // (gradle.properties). Üres ujjlenyomat esetén a futó app saját aláírója az elvárt (a telepített példányhoz
@@ -51,6 +58,8 @@ android {
 
     buildTypes {
         release {
+            // Teszt-kulcsos próba-build: a verziónévből is látszik, hogy nem kiadható.
+            if (testCatalogKeyIds.isNotEmpty() && allowTestCatalogKey) versionNameSuffix = "-testcatalog"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -85,6 +94,24 @@ android {
         }
     }
 }
+
+/**
+ * Kiadási kapu (biztonsági audit, CAT-01): release build NEM készülhet a katalógus teszt-kulcsával. A teszt-kulcs privát
+ * része egy fejlesztői gépen van, így egy vele kiadott kliens bármilyen, azzal aláírt katalógust elfogadna.
+ */
+val checkReleaseCatalogKey = tasks.register("checkReleaseCatalogKey") {
+    val testKeys = testCatalogKeyIds
+    val allowed = allowTestCatalogKey
+    doLast {
+        if (testKeys.isNotEmpty() && !allowed) {
+            throw GradleException(
+                "A reposhelf.catalog.publicKeys teszt-kulcsot tartalmaz ($testKeys): release build így nem készíthető. " +
+                    "Add meg a valódi katalóguskulcsot, vagy kizárólag teszteléshez: -Preposhelf.allowTestCatalogKey=true",
+            )
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(checkReleaseCatalogKey) }
 
 dependencies {
     implementation(project(":core:model"))

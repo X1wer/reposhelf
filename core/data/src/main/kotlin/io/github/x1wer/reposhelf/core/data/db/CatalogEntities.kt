@@ -28,6 +28,11 @@ data class CatalogStateEntity(
     val lastSuccessAtMillis: Long?,
     val lastErrorKind: String?,
     val lastErrorDetail: String?,
+    /**
+     * Melyik megbízható kulcs aláírásával fogadtuk el a tárolt katalógust (v6). Ha ez a kulcs már nem megbízható
+     * (kulcscsere, visszavonás), a tárolt katalógus sem az: a beépített katalógusból újraalapozzuk.
+     */
+    val signedByKeyId: String? = null,
 )
 
 /** Egy katalógusbejegyzés. A `search*` oszlopok normalizált (ékezet nélküli, kisbetűs) keresőszövegek. */

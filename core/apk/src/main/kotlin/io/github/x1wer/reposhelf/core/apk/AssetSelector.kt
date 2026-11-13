@@ -3,6 +3,7 @@
 
 package io.github.x1wer.reposhelf.core.apk
 
+import io.github.x1wer.reposhelf.core.model.AssetFilterSyntax
 import io.github.x1wer.reposhelf.core.model.ReleaseAsset
 
 /** Miért nem választható egy állomány. */
@@ -34,7 +35,6 @@ sealed interface AssetSelection {
 object AssetSelector {
     private val SPLIT_NAME = Regex("(^|[-_.])(split[_-]|config\\.)", RegexOption.IGNORE_CASE)
     private val BASE_NAME = Regex("(^|[-_.])base\\.apk$", RegexOption.IGNORE_CASE)
-    private const val MAX_FILTER_INPUT = 255
 
     fun select(assets: List<ReleaseAsset>, deviceAbis: List<String>, assetFilter: String?): AssetSelection {
         val rejected = mutableListOf<RejectedAsset>()
@@ -52,8 +52,10 @@ object AssetSelector {
         var candidates: List<ReleaseAsset> = apks
         var filterMismatch = false
         if (assetFilter != null) {
-            val regex = runCatching { Regex(assetFilter) }.getOrNull()
-            val filtered = if (regex == null) emptyList() else apks.filter { it.name.length <= MAX_FILTER_INPUT && regex.containsMatchIn(it.name) }
+            // Második védvonal (a katalógus-feldolgozó után): csak a korlátos futási idejű mintát futtatjuk le a repó
+            // tulajdonosa által megadott állományneveken (ReDoS ellen; AssetFilterSyntax).
+            val regex = AssetFilterSyntax.compileOrNull(assetFilter)
+            val filtered = if (regex == null) emptyList() else apks.filter { it.name.length <= AssetFilterSyntax.MAX_INPUT && regex.containsMatchIn(it.name) }
             if (filtered.isEmpty()) {
                 filterMismatch = true
             } else {

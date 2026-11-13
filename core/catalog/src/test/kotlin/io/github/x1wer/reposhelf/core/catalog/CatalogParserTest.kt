@@ -106,7 +106,9 @@ class CatalogParserTest {
         )
         val parsed = assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(*(base + badEntries).toTypedArray())))
         assertEquals(40, parsed.catalog.apps.size)
-        assertEquals(badEntries.size, parsed.rejected.size)
+        // Az ismeretlen (de szabályos alakú) szolgáltató nem hiba: a bejegyzés csak kimarad (előre-kompatibilitás).
+        assertEquals(badEntries.size - 1, parsed.rejected.size)
+        assertEquals(1, parsed.skippedUnknownProvider)
     }
 
     @Test
@@ -144,5 +146,64 @@ class CatalogParserTest {
         val a = assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(entry())))
         val b = assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(entry(name = "Obtainium 2"))))
         assertNotEquals(a.catalog.contentSha256, b.catalog.contentSha256)
+    }
+
+    // ---- Biztonsági audit: a katalógus aláírt, de a tartalma így is megbízhatatlan ----
+
+    private fun header(serial: String = "7", generated: String = "2026-11-10T00:00:00Z", expires: String = "2027-02-08T00:00:00Z") =
+        """"schemaVersion":1,"catalogSerial":$serial,"generatedAt":"$generated","expiresAt":"$expires""""
+
+    private fun invalidHeader(header: String) = assertIs<CatalogParseResult.Invalid>(parser.parse(catalog(entry(), header = header)))
+
+    @Test
+    fun header_rejectsAbsurdSerialsAndTimestamps() {
+        // CAT-03: az óriási sorszám minden későbbi katalógust „visszagörgetésként” zárna ki.
+        assertEquals(InvalidReason.BAD_HEADER, invalidHeader(header(serial = Long.MAX_VALUE.toString())).reason)
+        assertEquals(InvalidReason.BAD_HEADER, invalidHeader(header(serial = (CatalogParser.MAX_SERIAL + 1).toString())).reason)
+        assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(entry(), header = header(serial = CatalogParser.MAX_SERIAL.toString()))))
+        // CAT-10: szélsőséges évszám (később túlcsordulást okozna), és CAT-04: korlátlan érvényesség.
+        assertEquals(InvalidReason.BAD_HEADER, invalidHeader(header(expires = "+999999999-01-01T00:00:00Z")).reason)
+        assertEquals(InvalidReason.BAD_HEADER, invalidHeader(header(generated = "1970-01-01T00:00:00Z")).reason)
+        assertEquals(InvalidReason.BAD_HEADER, invalidHeader(header(expires = "2099-01-01T00:00:00Z")).reason)
+        assertEquals(InvalidReason.BAD_HEADER, invalidHeader(header(generated = "2026-11-10T00:00:00Z", expires = "2027-12-16T00:00:00Z")).reason, "400 napnál hosszabb érvényesség")
+        assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(entry(), header = header(expires = "2027-12-14T00:00:00Z"))))
+    }
+
+    @Test
+    fun unknownProvider_isSkipped_andDoesNotCountAsInvalid() {
+        // CAT-07: egy később bevezetett szolgáltató bejegyzései a régi kliensben kimaradnak, de nem érvénytelenítik a katalógust.
+        fun other(i: Int) = """{"id":"cb$i","name":"App $i","source":{"provider":"codeberg","repository":"owner/app$i"},"category":"system"}"""
+        val parsed = assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(entry(), other(1), other(2), other(3), other(4))))
+        assertEquals(listOf("obtainium"), parsed.catalog.apps.map { it.id })
+        assertTrue(parsed.rejected.isEmpty())
+        assertEquals(4, parsed.skippedUnknownProvider)
+        // A formailag is hibás szolgáltatónév viszont hibás bejegyzés.
+        val garbage = """{"id":"bad","name":"Bad","source":{"provider":"Git Lab!","repository":"o/a"},"category":"system"}"""
+        val mixed = assertIs<CatalogParseResult.Parsed>(parser.parse(catalog(entry(), entry(id = "bb", repo = "o/b"), entry(id = "cc", repo = "o/c"), entry(id = "dd", repo = "o/d"), entry(id = "ee", repo = "o/e"), garbage)))
+        assertEquals("bad", mixed.rejected.single().id)
+        // Csak ismeretlen szolgáltatójú bejegyzés (vagy üres lista): használható app nélkül a katalógus nem fogadható el.
+        assertEquals(InvalidReason.TOO_MANY_INVALID_ENTRIES, assertIs<CatalogParseResult.Invalid>(parser.parse(catalog(other(1), other(2)))).reason)
+        assertEquals(InvalidReason.TOO_MANY_INVALID_ENTRIES, assertIs<CatalogParseResult.Invalid>(parser.parse(catalog())).reason)
+    }
+
+    @Test
+    fun unsafeAssetFilter_andSpoofedNames_rejectTheEntry() {
+        fun withFilter(id: String, filter: String) = entry(id = id, repo = "o/$id", extra = "").dropLast(1) + ""","assetFilter":"$filter"}"""
+        val good = (1..8).map { entry(id = "ok$it", repo = "o/ok$it") }.toTypedArray()
+        val parsed = assertIs<CatalogParseResult.Parsed>(
+            parser.parse(
+                catalog(
+                    *good,
+                    withFilter("fine", "^(?!.*fdroid).*\\\\.apk$"),
+                    // CAT-02: visszalépéses robbanást adó minta.
+                    withFilter("redos", "^(app-?)+release\\\\.apk$"),
+                    // CAT-11: irányváltó karakter a névben.
+                    entry(id = "spoof", name = "Signal\\u202Egpj", repo = "o/spoof"),
+                ),
+            ),
+        )
+        assertEquals(setOf("redos", "spoof"), parsed.rejected.map { it.id }.toSet())
+        assertTrue(parsed.rejected.first { it.id == "redos" }.reason.contains("assetFilter"))
+        assertEquals("^(?!.*fdroid).*\\.apk$", parsed.catalog.apps.first { it.id == "fine" }.assetFilter)
     }
 }

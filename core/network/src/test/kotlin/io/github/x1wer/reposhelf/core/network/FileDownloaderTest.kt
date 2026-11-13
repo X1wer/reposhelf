@@ -297,4 +297,36 @@ class FileDownloaderTest {
         assertEquals(content.size, ok.size, "a kis kép teljes egészében megérkezik")
         assertTrue(ok.contentEquals(content))
     }
+
+    // ---- MD-03: a képkérés minden lépése megbízható hosztra megy, hacsak a felhasználó nem járult hozzá ----
+
+    private fun imageClient(trusted: (String) -> Boolean) = okhttp3.OkHttpClient.Builder().apply { https.trustTestCertificate(this) }
+        .followRedirects(true).addNetworkInterceptor(ImageHostInterceptor(trusted)).build()
+
+    @Test
+    fun imageRequests_stayOnTrustedHosts_unlessTheUserConsented() {
+        assertTrue(ImageHttpClient.isGitHubHost("github.com") && ImageHttpClient.isGitHubHost("RAW.githubusercontent.com"))
+        assertTrue(ImageHttpClient.isGitHubHost("private-user-images.githubusercontent.com"))
+        assertFalse(ImageHttpClient.isGitHubHost("evilgithubusercontent.com") || ImageHttpClient.isGitHubHost("github.com.evil.example") || ImageHttpClient.isGitHubHost("githubusercontent.com"))
+
+        // Nem megbízható hoszt hozzájárulás nélkül: a kérés ki sem megy.
+        val untrusted = kotlin.runCatching { imageClient { false }.newCall(okhttp3.Request.Builder().url(server.url("/a.png")).build()).execute().close() }
+        assertTrue(untrusted.exceptionOrNull() is java.io.IOException, untrusted.toString())
+        assertEquals(0, server.requestCount)
+
+        // Megbízható hosztról induló kérés, amely nem megbízható hosztra irányít át: a második lépés nem megy ki.
+        val other = "https://localhost:${server.port}/tracker.png"
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", other).build())
+        val redirected = kotlin.runCatching { imageClient { it == "127.0.0.1" }.newCall(okhttp3.Request.Builder().url(server.url("/b.png")).build()).execute().close() }
+        assertTrue(redirected.exceptionOrNull() is java.io.IOException, redirected.toString())
+        assertEquals(1, server.requestCount, "az átirányítás célja nem kapott kérést")
+        server.takeRequest()
+
+        // A felhasználó hozzájárulásával a kérés (és az átirányítása) kimegy, de a belső jelölő soha nem jut el a szerverhez.
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", other).build())
+        server.enqueue(MockResponse.Builder().code(200).body(body(content)).build())
+        val consented = okhttp3.Request.Builder().url(server.url("/c.png")).header(ImageHttpClient.EXTERNAL_CONSENT_HEADER, "1").build()
+        imageClient { false }.newCall(consented).execute().use { assertEquals(200, it.code) }
+        repeat(2) { assertNull(server.takeRequest().headers[ImageHttpClient.EXTERNAL_CONSENT_HEADER]) }
+    }
 }

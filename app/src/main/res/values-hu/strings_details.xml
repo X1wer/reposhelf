@@ -9,6 +9,9 @@
     <string name="action_open_repo">Repó megnyitása</string>
     <string name="action_retry">Újra</string>
     <string name="action_cancel">Mégse</string>
+    <string name="link_confirm_title">Megnyitod ezt a külső hivatkozást?</string>
+    <string name="link_confirm_note">Ez a hivatkozás a GitHubon kívülre vezet. A hivatkozás felirata eltérhet a tényleges céltól, ezért megnyitás előtt ellenőrizd a címet:</string>
+    <string name="link_confirm_open">Megnyitás</string>
     <string name="details_developer">Fejlesztő: %1$s</string>
     <string name="details_repository">Repó: %1$s</string>
     <string name="details_license">Licenc: %1$s</string>

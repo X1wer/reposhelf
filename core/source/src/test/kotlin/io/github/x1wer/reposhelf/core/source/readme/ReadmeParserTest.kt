@@ -138,4 +138,79 @@ class ReadmeParserTest {
         assertNull(doc.blocks.filterIsInstance<MdBlock.Image>().singleOrNull()?.image?.url)
         assertTrue(doc.blocks.filterIsInstance<MdBlock.Paragraph>().flatMap { it.text }.all { it.link == null })
     }
+
+    // ---- MD-01: a HTML-eltávolítás lineáris idejű (nincs négyzetes regex-visszalépés) ----
+
+    private fun parseWithin(limitMillis: Long, input: String): MarkdownDocument {
+        lateinit var document: MarkdownDocument
+        val elapsed = kotlin.system.measureTimeMillis { document = ReadmeParser.parse(input, null) }
+        assertTrue(elapsed < limitMillis, "A feldolgozás $elapsed ms-ig tartott (${input.length} karakter, kezdete: ${input.take(24)})")
+        return document
+    }
+
+    @Test
+    fun hostileHtml_isProcessedInLinearTime() {
+        // Mindegyik bemenet a régi, regex-alapú eltávolítóval percekig (négyzetes ideig) futott.
+        parseWithin(5_000, "<!--" + "<".repeat(500_000))
+        parseWithin(5_000, "<!--".repeat(130_000))
+        parseWithin(5_000, "<!--" + "<img".repeat(130_000))
+        parseWithin(5_000, "<script>".repeat(64_000))
+        parseWithin(5_000, "<div>\n" + "<img src=\"".repeat(50_000))
+        parseWithin(5_000, "<div " + "src=\"".repeat(100_000) + ">")
+        // A kiadási jegyzetek mérete (64 000 karakter): ez korábban a fő szálon futott.
+        parseWithin(2_000, "<!--" + "<".repeat(64_000))
+    }
+
+    @Test
+    fun htmlScanner_keepsTheSameMeaningAsBefore() {
+        assertEquals("a b", ReadmeParser.stripHtml("a<!-- hidden --> b"))
+        assertEquals("before after", ReadmeParser.stripHtml("before <script>alert(1)</script><STYLE>x{}</STYLE>after"))
+        assertEquals("x y", ReadmeParser.stripHtml("<p>x</p> <b>y</b>"))
+        assertEquals("1 < 2 & \"q\"", ReadmeParser.stripHtml("1 &lt; 2 &amp; &quot;q&quot;"))
+        // Lezáratlan megjegyzés / script: a maradék eldobva (nem jelenik meg szövegként).
+        assertEquals("ok", ReadmeParser.stripHtml("ok<!-- never closed <b>secret</b>"))
+        assertEquals("ok", ReadmeParser.stripHtml("ok<script>var secret = 1"))
+        // Egy magányos záró tag nem nyel el szöveget.
+        assertEquals("a b", ReadmeParser.stripHtml("a</script> b"))
+        assertEquals("line1\nline2", ReadmeParser.stripHtml("line1<br/>line2"))
+        val scan = ReadmeParser.scanHtml("<img src='a.png' alt=\"A\"><IMG SRC=b.png><img src=\"c.png\">", maxImages = 2)
+        assertEquals(2, scan.imageTags.size)
+        assertEquals(mapOf("src" to "a.png", "alt" to "A"), ReadmeParser.attributes(scan.imageTags[0]))
+        assertEquals("b.png", ReadmeParser.attributes(scan.imageTags[1])["src"])
+        assertEquals("first", ReadmeParser.attributes("<img src=first src=second>")["src"], "az első előfordulás számít")
+    }
+
+    // ---- MD-02: a megjelenített elemek száma korlátos (lista, táblázat, kép) ----
+
+    @Test
+    fun hugeListsTablesAndImageFloods_areBounded() {
+        // 260 000 üres listaelem: korábban egyetlen blokknak számított.
+        val list = parseWithin(10_000, "-\n".repeat(260_000))
+        assertTrue(list.restricted, "a túl sok listaelem korlátozott módot ad")
+        // Táblázat 130 000 sorral.
+        val table = parseWithin(10_000, "|h|\n|-|\n" + "|a|\n".repeat(130_000))
+        assertTrue(table.restricted)
+        // 5000 kép egyetlen bekezdésben: legfeljebb a keretnyi marad meg.
+        val images = parseWithin(10_000, (1..5000).joinToString(" ") { "![i](https://raw.githubusercontent.com/o/r/main/$it.png)" })
+        fun count(blocks: List<MdBlock>): Int = blocks.sumOf { block ->
+            when (block) {
+                is MdBlock.Image -> 1
+                is MdBlock.Quote -> count(block.blocks)
+                is MdBlock.ListBlock -> block.items.sumOf { count(it) }
+                else -> 0
+            }
+        }
+        assertTrue(count(images.blocks) in 1..60, "képek: ${count(images.blocks)}")
+        // Egy szokásos méretű dokumentum változatlanul feldolgozódik.
+        val normal = ReadmeParser.parse("# T\n\n" + (1..200).joinToString("\n") { "- item $it" } + "\n\n|a|b|\n|-|-|\n" + "|1|2|\n".repeat(100), null)
+        assertTrue(!normal.restricted)
+    }
+
+    @Test
+    fun pathologicalMarkdown_staysFast() {
+        parseWithin(10_000, "[".repeat(100_000))
+        parseWithin(10_000, "*a ".repeat(60_000))
+        parseWithin(10_000, "> ".repeat(100_000) + "x")
+        parseWithin(10_000, ("`".repeat(500) + " ").repeat(500))
+    }
 }

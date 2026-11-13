@@ -67,6 +67,20 @@ object HttpClients {
 object ImageHttpClient {
     const val MAX_IMAGE_BYTES = 10L * 1024 * 1024
 
+    /**
+     * Belső jelölőfejléc: a kérés olyan képre vonatkozik, amelynek külső hosztról való betöltéséhez a felhasználó
+     * hozzájárult. A hálózatra soha nem megy ki ([ImageHostInterceptor] eltávolítja). Jelölő nélkül a kérés MINDEN
+     * lépése (az átirányítások is) csak GitHub-hosztra mehet, így egy GitHub-cím átirányítása nem viheti a kérést
+     * – és vele a felhasználó IP-címét – beleegyezés nélkül harmadik félhez.
+     */
+    const val EXTERNAL_CONSENT_HEADER = "X-RepoShelf-External-Image"
+
+    /** A GitHub saját képtárhelyei: ezekről a README képei beleegyezés nélkül betölthetők. */
+    fun isGitHubHost(host: String): Boolean {
+        val h = host.lowercase()
+        return h == "github.com" || h.endsWith(".githubusercontent.com")
+    }
+
     fun create(userAgent: String): OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(false)
@@ -78,8 +92,24 @@ object ImageHttpClient {
         .addInterceptor(ImageBodyLimitInterceptor)
         // Hálózati interceptorok: az átirányítás minden egyes lépésén lefutnak.
         .addNetworkInterceptor(HttpsOnlyInterceptor)
+        .addNetworkInterceptor(ImageHostInterceptor())
         .addNetworkInterceptor(ImageSizeInterceptor)
         .build()
+}
+
+/**
+ * A képkérés minden lépésén (az átirányításokon is) lefut: a felhasználó hozzájárulása nélkül csak megbízható
+ * (GitHub-) hosztra mehet kérés. A belső jelölőfejlécet eltávolítja, mielőtt a kérés kimenne.
+ */
+internal class ImageHostInterceptor(private val isTrustedHost: (String) -> Boolean = ImageHttpClient::isGitHubHost) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val consented = request.header(ImageHttpClient.EXTERNAL_CONSENT_HEADER) != null
+        if (!consented && !isTrustedHost(request.url.host)) {
+            throw IOException("Külső hosztú kép a felhasználó hozzájárulása nélkül: ${request.url.host}")
+        }
+        return chain.proceed(request.newBuilder().removeHeader(ImageHttpClient.EXTERNAL_CONSENT_HEADER).build())
+    }
 }
 
 /** A képválasz törzsét legfeljebb [ImageHttpClient.MAX_IMAGE_BYTES] bájtig engedi beolvasni (kitömörítés után számolva). */

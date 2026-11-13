@@ -15,6 +15,9 @@ import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
+import java.security.AlgorithmParameters
+import java.security.spec.ECGenParameterSpec
+import java.security.spec.ECParameterSpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 
@@ -50,6 +53,9 @@ sealed interface CatalogSignatureCheck {
  * miatt önmagában nem megbízható.
  */
 class CatalogSignatureVerifier(private val trustedKeys: List<TrustedCatalogKey>) {
+
+    /** Megbízható-e (még) ez a kulcsazonosító: egy korábban elfogadott katalógus csak addig érvényes, amíg a kulcsa az. */
+    fun trusts(keyId: String): Boolean = trustedKeys.any { it.keyId == keyId }
 
     fun verify(catalog: ByteArray, signatureFile: ByteArray?): CatalogSignatureCheck {
         if (signatureFile == null) return CatalogSignatureCheck.Missing
@@ -108,13 +114,27 @@ class CatalogSignatureVerifier(private val trustedKeys: List<TrustedCatalogKey>)
          * A buildbe fordított kulcslista (`BuildConfig.CATALOG_PUBLIC_KEYS`): `keyId:base64(SubjectPublicKeyInfo)`
          * elemek vesszővel elválasztva. Csak P-256 EC-kulcs fogadható el; hibás elemnél kivétel (build-hiba, nem csendes).
          */
-        fun parseKeys(spec: String): List<TrustedCatalogKey> = spec.split(',').map { it.trim() }.filter { it.isNotEmpty() }.map { item ->
-            val keyId = item.substringBefore(':')
-            require(KEY_ID.matches(keyId) && item.contains(':')) { "Érvénytelen katalóguskulcs-azonosító: $keyId" }
-            val der = Base64.getDecoder().decode(item.substringAfter(':'))
-            val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(der))
-            require(key is ECPublicKey && key.params.curve.field.fieldSize == 256) { "Csak P-256 kulcs fogadható el: $keyId" }
-            TrustedCatalogKey(keyId, key)
+        fun parseKeys(spec: String): List<TrustedCatalogKey> {
+            val keys = spec.split(',').map { it.trim() }.filter { it.isNotEmpty() }.map { item ->
+                val keyId = item.substringBefore(':')
+                require(KEY_ID.matches(keyId) && item.contains(':')) { "Érvénytelen katalóguskulcs-azonosító: $keyId" }
+                val der = Base64.getDecoder().decode(item.substringAfter(':'))
+                val key = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(der))
+                require(key is ECPublicKey && isP256(key)) { "Csak P-256 (secp256r1) kulcs fogadható el: $keyId" }
+                TrustedCatalogKey(keyId, key)
+            }
+            require(keys.map { it.keyId }.toSet().size == keys.size) { "Ismétlődő katalóguskulcs-azonosító" }
+            return keys
+        }
+
+        private val P256: ECParameterSpec by lazy {
+            AlgorithmParameters.getInstance("EC").apply { init(ECGenParameterSpec("secp256r1")) }.getParameterSpec(ECParameterSpec::class.java)
+        }
+
+        /** A kulcs pontosan a secp256r1 görbén van-e (a 256 bites mezőméret önmagában más görbére is igaz lenne). */
+        internal fun isP256(key: ECPublicKey): Boolean {
+            val params = key.params
+            return params.curve == P256.curve && params.generator == P256.generator && params.order == P256.order && params.cofactor == P256.cofactor
         }
     }
 }

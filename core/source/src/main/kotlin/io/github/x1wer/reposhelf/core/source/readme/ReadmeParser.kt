@@ -3,6 +3,7 @@
 
 package io.github.x1wer.reposhelf.core.source.readme
 
+import io.github.x1wer.reposhelf.core.network.ImageHttpClient
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.commonmark.ext.gfm.tables.TableBlock
@@ -50,14 +51,18 @@ object ReadmeParser {
     private const val MAX_CODE_CHARS = 20_000
     private const val RESTRICTED_CHARS = 20_000
 
+    /**
+     * A megjelenítendő elemek keretei: a felület a teljes dokumentumot egyszerre komponálja, ezért a listaelemek, a
+     * táblázatcellák, a képek és a szöveg mennyisége is korlátos (a blokkszám önmagában nem elég: egy lista vagy egy
+     * táblázat egyetlen blokk). Túllépésnél korlátozott (csak szöveg) mód; a képekből a kereten felüliek kimaradnak.
+     */
+    private const val MAX_ITEMS = 2000
+    private const val MAX_COLUMNS = 20
+    private const val MAX_IMAGES = 60
+    private const val MAX_TEXT_CHARS = 300_000
+    private const val MAX_TAG_CHARS = 4096
+
     private val parser: Parser = Parser.builder().extensions(listOf(TablesExtension.create())).build()
-    private val SCRIPT_OR_STYLE = Regex("<(script|style)\\b[^>]*>.*?</\\1\\s*>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    private val IMG_TAG = Regex("<img\\b[^>]*>", RegexOption.IGNORE_CASE)
-    private val ATTR_SRC = Regex("\\bsrc\\s*=\\s*([\"'])(.*?)\\1", RegexOption.IGNORE_CASE)
-    private val ATTR_ALT = Regex("\\balt\\s*=\\s*([\"'])(.*?)\\1", RegexOption.IGNORE_CASE)
-    private val BR_TAG = Regex("<br\\s*/?>", RegexOption.IGNORE_CASE)
-    private val ANY_TAG = Regex("<[^>]*>")
-    private val COMMENT = Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL)
     private val WHITESPACE = Regex("[ \\t\\x0B\\f\\r]+")
     private val MAILTO = Regex("^mailto:[^\\s<>\"']{3,254}$", RegexOption.IGNORE_CASE)
 
@@ -66,7 +71,7 @@ object ReadmeParser {
         return try {
             val builder = Builder(context)
             val blocks = builder.blocks(parser.parse(markdown), depth = 0)
-            if (builder.blockCount > MAX_BLOCKS) restricted(markdown) else MarkdownDocument(blocks)
+            if (builder.blockCount > MAX_BLOCKS || builder.overBudget) restricted(markdown) else MarkdownDocument(blocks)
         } catch (_: RuntimeException) {
             restricted(markdown)
         } catch (_: StackOverflowError) {
@@ -80,10 +85,103 @@ object ReadmeParser {
         return MarkdownDocument(text.split(Regex("\n{2,}")).filter { it.isNotBlank() }.map { MdBlock.Paragraph(listOf(MdSpan(it.trim()))) }, restricted = true)
     }
 
-    internal fun stripHtml(html: String): String {
-        val noScript = SCRIPT_OR_STYLE.replace(COMMENT.replace(html, ""), "")
-        val withBreaks = BR_TAG.replace(noScript, "\n")
-        return decodeEntities(ANY_TAG.replace(withBreaks, "")).replace(WHITESPACE, " ").trim()
+    internal fun stripHtml(html: String): String = cleanText(scanHtml(html, maxImages = 0).text)
+
+    private fun cleanText(text: CharSequence): String = decodeEntities(text.toString()).replace(WHITESPACE, " ").trim()
+
+    /** A HTML-eltávolítás eredménye: a megmaradó szöveg és (legfeljebb a kért számú) `<img …>` tag. */
+    internal class HtmlScan(val text: CharSequence, val imageTags: List<String>)
+
+    /**
+     * HTML-eltávolítás EGYETLEN, lineáris idejű bejárással (reguláris kifejezés nélkül): a megjegyzések és a
+     * `<script>` / `<style>` elemek tartalmukkal együtt eldobva, a `<br>` sortörés, minden más tag jelölése törölve.
+     * A lezáratlan megjegyzés, script vagy tag után a bejárás leáll (a lezáratlan megjegyzés és script maradéka
+     * eldobva), így a rosszindulatúan kialakított bemenet sem okoz négyzetes futási időt.
+     */
+    internal fun scanHtml(html: String, maxImages: Int): HtmlScan {
+        val out = StringBuilder(minOf(html.length, 64 * 1024))
+        val images = ArrayList<String>()
+        val n = html.length
+        var i = 0
+        while (i < n) {
+            val lt = html.indexOf('<', i)
+            if (lt < 0) {
+                out.append(html, i, n)
+                break
+            }
+            out.append(html, i, lt)
+            if (html.startsWith("<!--", lt)) {
+                val end = html.indexOf("-->", lt + 4)
+                if (end < 0) break
+                i = end + 3
+                continue
+            }
+            val gt = html.indexOf('>', lt + 1)
+            if (gt < 0) {
+                // Nincs több lezárt tag: a maradék egyszerű szöveg.
+                out.append(html, lt, n)
+                break
+            }
+            when (val name = tagName(html, lt + 1, gt)) {
+                "script", "style" -> {
+                    val close = html.indexOf("</$name", gt + 1, ignoreCase = true)
+                    val closeEnd = if (close < 0) -1 else html.indexOf('>', close)
+                    if (closeEnd < 0) break
+                    i = closeEnd + 1
+                    continue
+                }
+                "br" -> out.append('\n')
+                "img" -> if (images.size < maxImages && gt - lt <= MAX_TAG_CHARS) images += html.substring(lt, gt + 1)
+            }
+            i = gt + 1
+        }
+        return HtmlScan(out, images)
+    }
+
+    /** A tag kisbetűs neve; záró tagnál `/` előtaggal (így egy magányos `</script>` nem számít nyitónak). */
+    internal fun tagName(html: String, start: Int, end: Int): String {
+        var i = start
+        val closing = i < end && html[i] == '/'
+        if (closing) i++
+        val nameStart = i
+        while (i < end && i - nameStart < 12 && html[i].isLetterOrDigit()) i++
+        val name = html.substring(nameStart, i).lowercase()
+        return if (closing) "/$name" else name
+    }
+
+    /** Egy HTML-tag attribútumai, lineáris bejárással (idézőjeles és idézőjel nélküli értékek; az első előfordulás számít). */
+    internal fun attributes(tag: String): Map<String, String> {
+        val result = HashMap<String, String>()
+        val n = tag.length
+        var i = tag.indexOfFirst { it.isWhitespace() }
+        if (i < 0) return result
+        while (i < n && result.size < 16) {
+            while (i < n && (tag[i].isWhitespace() || tag[i] == '/')) i++
+            val nameStart = i
+            while (i < n && !tag[i].isWhitespace() && tag[i] != '=' && tag[i] != '>' && tag[i] != '/') i++
+            if (i == nameStart) {
+                i++
+                continue
+            }
+            val name = tag.substring(nameStart, i).lowercase()
+            while (i < n && tag[i].isWhitespace()) i++
+            if (i >= n || tag[i] != '=') continue
+            i++
+            while (i < n && tag[i].isWhitespace()) i++
+            val value: String
+            if (i < n && (tag[i] == '"' || tag[i] == '\'')) {
+                val end = tag.indexOf(tag[i], i + 1)
+                if (end < 0) break
+                value = tag.substring(i + 1, end)
+                i = end + 1
+            } else {
+                val valueStart = i
+                while (i < n && !tag[i].isWhitespace() && tag[i] != '>') i++
+                value = tag.substring(valueStart, i)
+            }
+            if (name !in result) result[name] = value
+        }
+        return result
     }
 
     private fun decodeEntities(text: String): String = text
@@ -92,6 +190,20 @@ object ReadmeParser {
 
     private class Builder(private val context: LinkContext?) {
         var blockCount = 0
+
+        /** A listaelemek és táblázatcellák száma, a képek száma és a szöveg hossza (a megjelenítés keretei). */
+        private var itemCount = 0
+        private var imageCount = 0
+        private var textChars = 0
+        var overBudget = false
+            private set
+
+        private fun admitImage(): Boolean = ++imageCount <= MAX_IMAGES
+
+        private fun countText(chars: Int) {
+            textChars += chars
+            if (textChars > MAX_TEXT_CHARS) overBudget = true
+        }
 
         fun blocks(parent: Node, depth: Int): List<MdBlock> {
             val result = mutableListOf<MdBlock>()
@@ -110,8 +222,8 @@ object ReadmeParser {
             return when (node) {
                 is Heading -> listOf(MdBlock.Heading(node.level.coerceIn(1, 6), spans(node)))
                 is Paragraph -> paragraph(node)
-                is FencedCodeBlock -> listOf(MdBlock.Code(node.literal.orEmpty().take(MAX_CODE_CHARS).trimEnd(), node.info?.takeIf { it.isNotBlank() }?.take(20)))
-                is IndentedCodeBlock -> listOf(MdBlock.Code(node.literal.orEmpty().take(MAX_CODE_CHARS).trimEnd(), null))
+                is FencedCodeBlock -> listOf(code(node.literal, node.info?.takeIf { it.isNotBlank() }?.take(20)))
+                is IndentedCodeBlock -> listOf(code(node.literal, null))
                 is BlockQuote -> listOf(MdBlock.Quote(blocks(node, depth + 1)))
                 is BulletList -> listOf(MdBlock.ListBlock(false, 1, items(node, depth)))
                 is OrderedList -> listOf(MdBlock.ListBlock(true, node.markerStartNumber ?: 1, items(node, depth)))
@@ -122,11 +234,24 @@ object ReadmeParser {
             }?.takeIf { it.isNotEmpty() }
         }
 
+        private fun code(literal: String?, language: String?): MdBlock.Code {
+            val text = literal.orEmpty().take(MAX_CODE_CHARS).trimEnd()
+            countText(text.length)
+            return MdBlock.Code(text, language)
+        }
+
         private fun items(list: Node, depth: Int): List<List<MdBlock>> {
             val items = mutableListOf<List<MdBlock>>()
             var item = list.firstChild
             while (item != null) {
-                if (item is ListItem) items += blocks(item, depth + 1)
+                if (item is ListItem) {
+                    // Az üres listaelem is megjelenített elem: beleszámít a keretbe (különben egy lista korlátlan lehetne).
+                    if (++itemCount > MAX_ITEMS) {
+                        overBudget = true
+                        break
+                    }
+                    items += blocks(item, depth + 1)
+                }
                 item = item.next
             }
             return items
@@ -138,23 +263,26 @@ object ReadmeParser {
             val text = spans(node, images = images)
             return buildList {
                 if (text.any { it.text.isNotBlank() }) add(MdBlock.Paragraph(text))
-                images.forEach { add(MdBlock.Image(it)) }
+                images.forEach { if (admitImage()) add(MdBlock.Image(it)) }
             }
         }
 
         private fun html(literal: String): List<MdBlock> {
-            val images = IMG_TAG.findAll(literal).mapNotNull { tag -> imageFromTag(tag.value) }.toList()
-            val text = stripHtml(literal)
+            val scan = scanHtml(literal, MAX_IMAGES)
+            val images = scan.imageTags.mapNotNull { tag -> imageFromTag(tag) }
+            val text = cleanText(scan.text)
+            countText(text.length)
             return buildList {
                 if (text.isNotBlank()) add(MdBlock.Paragraph(listOf(MdSpan(text))))
-                images.forEach { add(MdBlock.Image(it)) }
+                images.forEach { if (admitImage()) add(MdBlock.Image(it)) }
             }
         }
 
         private fun imageFromTag(tag: String): MdImage? {
-            val src = ATTR_SRC.find(tag)?.groupValues?.get(2) ?: return null
-            val alt = ATTR_ALT.find(tag)?.groupValues?.get(2).orEmpty()
-            return image(decodeEntities(src), decodeEntities(alt))
+            if (tag.length > MAX_TAG_CHARS) return null
+            val attributes = attributes(tag)
+            val src = attributes["src"] ?: return null
+            return image(decodeEntities(src), decodeEntities(attributes["alt"].orEmpty()))
         }
 
         private fun table(node: TableBlock): MdBlock.Table {
@@ -162,7 +290,14 @@ object ReadmeParser {
             val rows = mutableListOf<List<List<MdSpan>>>()
             for (section in children(node)) {
                 for (row in children(section).filterIsInstance<TableRow>()) {
-                    val cells = children(row).filterIsInstance<TableCell>().map { spans(it) }.toList()
+                    val cellNodes = children(row).filterIsInstance<TableCell>().take(MAX_COLUMNS).toList()
+                    // A sorok és cellák megjelenített elemek: beleszámítanak a keretbe.
+                    itemCount += cellNodes.size.coerceAtLeast(1)
+                    if (itemCount > MAX_ITEMS) {
+                        overBudget = true
+                        return MdBlock.Table(header, rows)
+                    }
+                    val cells = cellNodes.map { spans(it) }
                     when (section) {
                         is TableHead -> if (header.isEmpty()) header = cells
                         is TableBody -> rows += cells
@@ -179,7 +314,7 @@ object ReadmeParser {
         private fun spans(parent: Node, images: MutableList<MdImage>? = null): List<MdSpan> {
             val out = mutableListOf<MdSpan>()
             collect(parent, Style(), out, images, depth = 0)
-            return merge(out)
+            return merge(out).also { merged -> countText(merged.sumOf { it.text.length }) }
         }
 
         private fun collect(parent: Node, style: Style, out: MutableList<MdSpan>, images: MutableList<MdImage>?, depth: Int) {
@@ -199,11 +334,10 @@ object ReadmeParser {
                         if (images != null && img != null) images += img else if (alt.isNotBlank()) out += MdSpan(alt, style.bold, style.italic, link = style.link)
                     }
                     is HtmlInline -> {
-                        val literal = node.literal.orEmpty()
-                        if (IMG_TAG.containsMatchIn(literal)) {
-                            imageFromTag(literal)?.let { img -> if (images != null) images += img }
-                        } else if (BR_TAG.matches(literal.trim())) {
-                            out += MdSpan("\n", style.bold, style.italic, link = style.link)
+                        val literal = node.literal.orEmpty().trim()
+                        when (if (literal.startsWith("<")) tagName(literal, 1, literal.length) else "") {
+                            "img" -> imageFromTag(literal)?.let { img -> if (images != null) images += img }
+                            "br" -> out += MdSpan("\n", style.bold, style.italic, link = style.link)
                         }
                         // Minden más inline HTML (pl. <b>, <a>) jelölése elhagyva; a köztes szöveg Text csomópontként jön.
                     }
@@ -293,7 +427,7 @@ object ReadmeParser {
     }
 
     internal fun isGitHubHost(url: HttpUrl): Boolean {
-        val host = url.host.lowercase()
-        return host == "github.com" || host == "raw.githubusercontent.com" || host.endsWith(".githubusercontent.com")
+        // Ugyanaz a szabály dönt a besorolásról és a képbetöltő átirányítás-ellenőrzéséről (MD-03).
+        return ImageHttpClient.isGitHubHost(url.host)
     }
 }

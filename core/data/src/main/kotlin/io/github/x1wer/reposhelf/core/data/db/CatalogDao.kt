@@ -25,6 +25,19 @@ abstract class CatalogDao {
     @Query("DELETE FROM catalog_app")
     protected abstract suspend fun deleteAllApps()
 
+    @Query("DELETE FROM catalog_state")
+    protected abstract suspend fun deleteState()
+
+    /** A tárolt katalógus teljes törlése: ha már nem megbízható (pl. visszavont kulcs), és nincs mivel pótolni. */
+    @Transaction
+    open suspend fun clearCatalog() {
+        deleteAllApps()
+        deleteState()
+    }
+
+    @Query("UPDATE catalog_state SET signedByKeyId = :keyId WHERE id = 0")
+    abstract suspend fun recordSigner(keyId: String)
+
     @Insert
     protected abstract suspend fun insertApps(apps: List<CatalogAppEntity>)
 

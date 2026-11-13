@@ -121,15 +121,34 @@ class CatalogRepository(
     }
 
     suspend fun ensureInitialized(): InitOutcome = mutex.withLock {
-        if (dao.state() != null) return InitOutcome.AlreadyPresent
+        val state = dao.state()
+        if (state != null && !mustReseed(state)) return InitOutcome.AlreadyPresent
+        val outcome = seedFromBundled()
+        // A tárolt katalógus már nem megbízható, és a beépítettel sem pótolható: nem használható tovább.
+        if (state != null && outcome !is InitOutcome.Seeded) dao.clearCatalog()
+        outcome
+    }
+
+    /**
+     * A tárolt katalógus csak addig érvényes, amíg az elfogadásakor használt kulcs megbízható, és a sorszáma eléri az
+     * appba fordított minimumot. Kulcscsere vagy -visszavonás (és a minimum emelése) után az alkalmazásfrissítés így
+     * eltávolítja a régi kulccsal elfogadott tartalmat: a beépített katalógusból alapozunk újra.
+     */
+    private fun mustReseed(state: CatalogStateEntity): Boolean {
+        val keyId = state.signedByKeyId
+        return keyId == null || !config.verifier.trusts(keyId) || state.catalogSerial < config.minimumSerial
+    }
+
+    private suspend fun seedFromBundled(): InitOutcome {
         val bundled = bundledCatalog() ?: return InitOutcome.NoBundledCatalog
         val signature = config.verifier.verify(bundled.catalog, bundled.signature)
         if (signature !is CatalogSignatureCheck.Valid) return InitOutcome.BundledCatalogInvalid(signature.toString())
-        when (val parsed = parser.parse(bundled.catalog)) {
+        return when (val parsed = parser.parse(bundled.catalog)) {
             is CatalogParseResult.Parsed -> {
-                val decision = CatalogAcceptance.decide(null, parsed.catalog, config.minimumSerial)
+                // A beépített katalógus lejárt is lehet (régi telepítőcsomag): betöltjük, a felület jelzi az elavulást.
+                val decision = CatalogAcceptance.decide(null, parsed.catalog, config.minimumSerial, clock.instant(), allowExpired = true)
                 if (decision != CatalogDecision.Accept) return InitOutcome.BundledCatalogInvalid(decision.toString())
-                store(parsed.catalog, parsed.rejected.size, CatalogSource.BUNDLED, Validators.NONE, previous = null)
+                store(parsed.catalog, parsed.rejected.size, CatalogSource.BUNDLED, Validators.NONE, signature.keyId, previous = null)
                 InitOutcome.Seeded(parsed.catalog.apps.size)
             }
             is CatalogParseResult.UnsupportedSchema -> InitOutcome.BundledCatalogInvalid("schemaVersion=${parsed.schemaVersion}")
@@ -154,9 +173,10 @@ class CatalogRepository(
         )
         when (val response = fetcher.get(request)) {
             is FetchResponse.NotModified -> {
-                if (state != null) {
-                    dao.recordUnchanged(now.toEpochMilli(), response.validators.etag, response.validators.lastModified, CatalogSource.REMOTE.name)
-                }
+                // 304 csak feltételes kérésre fogadható el: kéretlen 304-gyel egy rosszindulatú tárhely sikeres
+                // frissítésnek mutathatná, hogy semmit nem töltöttünk le (befagyasztás).
+                if (validators == null || state == null) return fail(state, now, CatalogErrorKind.HTTP, "HTTP 304")
+                dao.recordUnchanged(now.toEpochMilli(), response.validators.etag, response.validators.lastModified, CatalogSource.REMOTE.name)
                 RefreshOutcome.Unchanged
             }
             is FetchResponse.Success -> processRemote(response, state, now)
@@ -169,7 +189,9 @@ class CatalogRepository(
 
     /** A katalógus aláírásfájlja; `null`, ha nincs (404). Más hibánál a frissítés átmeneti hibaként áll meg. */
     private suspend fun fetchSignature(): Result<ByteArray?> {
-        val request = FetchRequest(url = config.signatureUrl, policy = config.policy, headers = mapOf("Accept" to "application/json"), validators = null)
+        // Az aláírásfájl kicsi: a saját (16 KiB) korlátjával töltjük le, nem a katalóguséval.
+        val policy = config.policy.copy(maxBodyBytes = CatalogSignatureVerifier.MAX_SIGNATURE_FILE.toLong())
+        val request = FetchRequest(url = config.signatureUrl, policy = policy, headers = mapOf("Accept" to "application/json"), validators = null)
         return when (val response = fetcher.get(request)) {
             is FetchResponse.Success -> Result.success(response.body)
             is FetchResponse.HttpError -> if (response.code == 404) Result.success(null) else Result.failure(SignatureFetchFailure(CatalogErrorKind.HTTP, "HTTP ${response.code}"))
@@ -188,8 +210,8 @@ class CatalogRepository(
             return fail(state, now, failure.kind, failure.detail)
         }
         // Az aláírás a feldolgozás ELŐTT: egy hamis katalógus tartalmát még a sorszám-ellenőrzés sem látja.
-        when (val check = config.verifier.verify(response.body, signature)) {
-            is CatalogSignatureCheck.Valid -> Unit
+        val keyId = when (val check = config.verifier.verify(response.body, signature)) {
+            is CatalogSignatureCheck.Valid -> check.keyId
             CatalogSignatureCheck.Missing -> return fail(state, now, CatalogErrorKind.SIGNATURE, "missing")
             is CatalogSignatureCheck.Invalid -> return fail(state, now, CatalogErrorKind.SIGNATURE, check.reason.name)
         }
@@ -200,13 +222,15 @@ class CatalogRepository(
                 fail(state, now, CatalogErrorKind.INVALID, listOfNotNull(parsed.reason.name, parsed.detail).joinToString(": "))
             is CatalogParseResult.Parsed -> {
                 val current = state?.let { AcceptedCatalogInfo(it.catalogSerial, it.contentSha256) }
-                when (val decision = CatalogAcceptance.decide(current, parsed.catalog, config.minimumSerial)) {
+                // A lejárt (pl. visszajátszott) letöltött katalógus nem váltja le a meglévőt (D-022).
+                when (val decision = CatalogAcceptance.decide(current, parsed.catalog, config.minimumSerial, now)) {
                     CatalogDecision.Accept -> {
-                        store(parsed.catalog, parsed.rejected.size, CatalogSource.REMOTE, response.validators, state, now)
+                        store(parsed.catalog, parsed.rejected.size, CatalogSource.REMOTE, response.validators, keyId, state, now)
                         RefreshOutcome.Updated(parsed.catalog.apps.size, parsed.rejected.size)
                     }
                     CatalogDecision.NoChange -> {
                         dao.recordUnchanged(now.toEpochMilli(), response.validators.etag, response.validators.lastModified, CatalogSource.REMOTE.name)
+                        dao.recordSigner(keyId)
                         RefreshOutcome.Unchanged
                     }
                     else -> fail(state, now, CatalogErrorKind.REJECTED, decision.toString())
@@ -225,6 +249,7 @@ class CatalogRepository(
         rejectedCount: Int,
         source: CatalogSource,
         validators: Validators,
+        signedByKeyId: String,
         previous: CatalogStateEntity?,
         now: Instant = clock.instant(),
     ) {
@@ -245,6 +270,7 @@ class CatalogRepository(
             lastSuccessAtMillis = if (source == CatalogSource.REMOTE) nowMillis else previous?.lastSuccessAtMillis,
             lastErrorKind = null,
             lastErrorDetail = null,
+            signedByKeyId = signedByKeyId,
         )
         dao.replaceCatalog(state, catalog.apps.map { it.toEntity() })
     }

@@ -9,6 +9,9 @@
     <string name="action_open_repo">Open repository</string>
     <string name="action_retry">Retry</string>
     <string name="action_cancel">Cancel</string>
+    <string name="link_confirm_title">Open this external link?</string>
+    <string name="link_confirm_note">This link leads outside GitHub. The text of a link can differ from where it really goes, so check the address before opening it:</string>
+    <string name="link_confirm_open">Open</string>
     <string name="details_developer">Developer: %1$s</string>
     <string name="details_repository">Repository: %1$s</string>
     <string name="details_license">License: %1$s</string>

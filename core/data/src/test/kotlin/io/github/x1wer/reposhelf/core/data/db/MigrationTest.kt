@@ -85,7 +85,7 @@ class MigrationTest {
             assertEquals("aa", dao.pin("com.example")?.certsSha256)
             dao.upsertNotification(NotificationLogEntity("update:7", "release:1", 1))
             assertEquals("release:1", dao.notification("update:7")?.stateHash)
-            assertEquals(5, db.openHelper.readableDatabase.version)
+            assertEquals(6, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -105,7 +105,7 @@ class MigrationTest {
             assertEquals("aa", db.trackedAppDao().pin("com.example")?.certsSha256)
             assertEquals("release:2", db.trackedAppDao().notification("update:1")?.stateHash)
             db.safetyDao().insertHistory(UpdateHistoryEntity(trackedAppId = 1, appName = "A", packageName = "com.example", fromVersionName = "1", fromVersionCode = 1, toVersionName = "2", toVersionCode = 2, atMillis = 5, outcome = "SUCCESS", failureCode = null, failureMessage = null, method = "MANUAL"))
-            assertEquals(5, db.openHelper.readableDatabase.version)
+            assertEquals(6, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -128,7 +128,7 @@ class MigrationTest {
             }
             assertEquals(null, store.read("a"), "a felső korlát fölött a legrégebbi törlődik")
             assertEquals("{}", store.read("c")?.payload)
-            assertEquals(5, db.openHelper.readableDatabase.version)
+            assertEquals(6, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -152,7 +152,42 @@ class MigrationTest {
             assertNull(tracked.pin("com.beemdevelopment.aegis"))
             tracked.upsertPin(SignerPinEntity("com.beemdevelopment.aegis", "ab", "FIRST_INSTALL_VIA_US", 1, null))
             assertEquals("ab", tracked.pin("com.beemdevelopment.aegis")?.certsSha256)
-            assertTrue(db.openHelper.readableDatabase.version == 5)
+            assertTrue(db.openHelper.readableDatabase.version == 6)
+        } finally {
+            db.close()
+            file.delete()
+        }
+    }
+
+    @Test
+    fun version5_migratesTo6_andTheStoredCatalogHasNoSignerYet() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = context.getDatabasePath("migration-test-5.db").apply { parentFile?.mkdirs(); delete() }
+        createVersion(file, 5) { db ->
+            db.execSQL(
+                """INSERT INTO catalog_state (id, schemaVersion, catalogSerial, generatedAtMillis, expiresAtMillis, contentSha256, source,
+                   appCount, rejectedCount, etag, lastModified, acceptedAtMillis, lastAttemptAtMillis, lastSuccessAtMillis, lastErrorKind, lastErrorDetail)
+                   VALUES (0, 1, 7, 1, 2, 'abc', 'REMOTE', 1, 0, NULL, NULL, 3, NULL, NULL, NULL, NULL)""",
+            )
+            db.execSQL(
+                """INSERT INTO catalog_app (catalogId, name, provider, repoOwner, repoName, repositoryId, packageName,
+                   signingCertSha256, minVersionCode, keywords, category, assetFilter, searchName, searchKeywords)
+                   VALUES ('aegis', 'Aegis', 'github', 'beemdevelopment', 'Aegis', 6, NULL, '', NULL, '', 'security', NULL, 'aegis', '')""",
+            )
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, file.path).build()
+        try {
+            val state = assertNotNull(db.catalogDao().state())
+            assertEquals(7L, state.catalogSerial)
+            // A régi sorhoz nincs rögzített aláírókulcs: az első indításkor a beépített katalógusból újraalapozódik.
+            assertNull(state.signedByKeyId)
+            assertNotNull(db.catalogDao().byId("aegis"))
+            db.catalogDao().recordSigner("catalog-a")
+            assertEquals("catalog-a", db.catalogDao().state()?.signedByKeyId)
+            db.catalogDao().clearCatalog()
+            assertNull(db.catalogDao().state())
+            assertNull(db.catalogDao().byId("aegis"))
+            assertEquals(6, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()

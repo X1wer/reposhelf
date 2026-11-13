@@ -160,4 +160,18 @@ class SelectionAndVersionTest {
         assertEquals(CheckStatus.NOT_CHECKED, checks.getValue(PreCheck.ANDROID_VERSION).status, "a minSdk csak letöltés után ismert")
         assertEquals(CheckStatus.WARNING, checks.getValue(PreCheck.RELEASE_TYPE).status)
     }
+
+    // ---- CAT-02: a nem megengedett (visszalépéses robbanást adó) szűrő soha nem fut le az állományneveken ----
+
+    @Test
+    fun unsafeFilter_isNeverEvaluated_andTheUserChooses() {
+        val hostile = "app-".repeat(60) + "x.apk"
+        val started = System.nanoTime()
+        val selection = assertIs<AssetSelection.Ambiguous>(AssetSelector.select(listOf(asset(hostile), asset("b.apk")), armPhone, "^(app-?)+release\\.apk$"))
+        assertTrue(selection.filterMismatch)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2_000, "a szűrő nem futhatott le")
+        // A megengedett szűrő változatlanul működik.
+        val picked = assertIs<AssetSelection.Single>(AssetSelector.select(listOf(asset("app-fdroid.apk"), asset("app-release.apk")), armPhone, "^(?!.*fdroid).*\\.apk$"))
+        assertEquals("app-release.apk", picked.asset.name)
+    }
 }

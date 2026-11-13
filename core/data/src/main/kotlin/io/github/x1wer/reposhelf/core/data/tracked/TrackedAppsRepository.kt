@@ -143,7 +143,10 @@ class TrackedAppsRepository(
         (dao.byRepoId(repo.ref.provider.id, repo.id.value) ?: dao.byRepoKey(repo.ref.key))?.let {
             return AddRepoPreview.AlreadyTracked(it.id, it.isFollowed)
         }
+        // A katalógusbejegyzés csak akkor tartozik ehhez a repóhoz, ha az útvonala is egyezik: a bejegyzésben megadott
+        // stabil azonosító önmagában (egy más útvonalú bejegyzésben) nem köthet katalógus-adatot egy saját forráshoz.
         val catalogApp = catalogDao.byRepo(repo.ref.provider.id, repo.id.value, repo.ref.owner, repo.ref.name)?.toModelOrNull()
+            ?.takeIf { it.repo.key == repo.ref.key }
         // Ha csak előzetes kiadásban van APK, azt is megmutatjuk (jelölve); követéskor a beállítás dönt.
         val discovered = found.value.let { if (it.candidate == null) it.copy(candidate = it.resolved.latestPrerelease) else it }
         val installedNow = catalogApp?.packageName?.let { installedVersion(it, null) }

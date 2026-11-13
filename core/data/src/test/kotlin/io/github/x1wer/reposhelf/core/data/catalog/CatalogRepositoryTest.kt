@@ -268,4 +268,105 @@ class CatalogRepositoryTest {
                 .toByteArray()
         }
     }
+
+    // ---- Biztonsági audit: CAT-03 (a tárolt katalógus újraellenőrzése), CAT-04 (lejárat), CAT-09 (kéretlen 304) ----
+
+    private fun repositoryTrusting(keyId: String, key: KeyPair, minimumSerial: Long = 1): CatalogRepository {
+        val client = HttpClients.create("RepoShelf-Test/1") { https.trustTestCertificate(this) }
+        val fetcher = HttpFetcher(client, RateLimitTracker(clock), ConcurrencyLimiter(2), clock, random = Random(1), sleep = {})
+        return CatalogRepository(
+            dao = db.catalogDao(),
+            fetcher = fetcher,
+            config = CatalogConfig(
+                url = https.server.url("/dist/v1/catalog.json"),
+                signatureUrl = https.server.url("/dist/v1/catalog.json.sig"),
+                verifier = CatalogSignatureVerifier(listOf(TrustedCatalogKey(keyId, key.public))),
+                policy = HttpPolicy.of(https.host, maxBodyBytes = 8 * HttpPolicy.MIB),
+                minimumSerial = minimumSerial,
+            ),
+            bundledCatalog = { seed },
+            clock = clock,
+        )
+    }
+
+    @Test
+    fun storedCatalog_isDropped_whenItsSigningKeyIsNoLongerTrusted(): Unit = runBlocking {
+        // A régi kulccsal: beépített (1), majd letöltött (5) katalógus.
+        val old = repository()
+        old.ensureInitialized()
+        enqueueSigned(catalogJson(5, SAMPLE.take(2)))
+        assertIs<RefreshOutcome.Updated>(old.refresh(force = true))
+        assertEquals(5L, old.status.first().serial)
+        assertEquals(InitOutcome.AlreadyPresent, repository().ensureInitialized(), "változatlan kulcslistánál a tárolt katalógus marad")
+
+        // Alkalmazásfrissítés: a régi kulcs kikerült a megbízhatók közül, az új build katalógusát az új kulcs írta alá.
+        val newKey = keyPair()
+        val bundled = catalogJson(2, SAMPLE.take(3))
+        seed = SignedCatalog(bundled, signatureFile(bundled, newKey, "catalog-new"))
+        val updated = repositoryTrusting("catalog-new", newKey)
+        assertEquals(InitOutcome.Seeded(3), updated.ensureInitialized())
+        val status = updated.status.first()
+        assertEquals(2L, status.serial, "a régi kulccsal elfogadott (5-ös) katalógus eltűnt")
+        assertEquals(CatalogSource.BUNDLED, status.source)
+        assertEquals(InitOutcome.AlreadyPresent, updated.ensureInitialized())
+
+        // Ha a beépített katalógus sem pótolja (nem megbízható aláírás), a régi kulcsú katalógus akkor sem marad használatban.
+        val third = keyPair()
+        assertIs<InitOutcome.BundledCatalogInvalid>(repositoryTrusting("catalog-third", third).ensureInitialized())
+        assertTrue(!updated.status.first().hasCatalog)
+    }
+
+    @Test
+    fun storedCatalogBelowTheNewMinimumSerial_isReplacedByTheBundledOne(): Unit = runBlocking {
+        repository().ensureInitialized()
+        assertEquals(1L, repository().status.first().serial)
+        // Az új build magasabb minimumot és újabb beépített katalógust hoz.
+        seed = signed(catalogJson(4, SAMPLE.take(2)))
+        val repo = repository(minimumSerial = 3)
+        assertEquals(InitOutcome.Seeded(2), repo.ensureInitialized())
+        assertEquals(4L, repo.status.first().serial)
+    }
+
+    @Test
+    fun absurdSerial_cannotLockTheClient(): Unit = runBlocking {
+        val repo = repository()
+        repo.ensureInitialized()
+        enqueueSigned(catalogJson(Long.MAX_VALUE, SAMPLE))
+        assertEquals(CatalogErrorKind.INVALID, assertIs<RefreshOutcome.Failed>(repo.refresh(force = true)).kind)
+        // A következő, szabályos katalógus elfogadható marad.
+        enqueueSigned(catalogJson(2, SAMPLE))
+        assertIs<RefreshOutcome.Updated>(repo.refresh(force = true))
+        assertEquals(2L, repo.status.first().serial)
+    }
+
+    @Test
+    fun expiredRemoteCatalog_isRejected_butAnExpiredBundledCatalogStillLoads(): Unit = runBlocking {
+        // A katalógusok 2027-02-08-ig érvényesek; az óra ezután jár.
+        clock.advance(Duration.ofDays(120))
+        val repo = repository()
+        assertIs<InitOutcome.Seeded>(repo.ensureInitialized())
+        assertTrue(repo.status.first().isExpired(clock.instant()), "a felület jelzi, hogy a beépített katalógus elavult")
+        // Visszajátszott, lejárt (de érvényesen aláírt, magasabb sorszámú) katalógus: nem váltja le a meglévőt.
+        enqueueSigned(catalogJson(9, SAMPLE.take(1)))
+        val failed = assertIs<RefreshOutcome.Failed>(repo.refresh(force = true))
+        assertEquals(CatalogErrorKind.REJECTED, failed.kind)
+        assertTrue(failed.detail.orEmpty().contains("RejectExpired"), failed.detail)
+        val status = repo.status.first()
+        assertEquals(1L, status.serial)
+        assertEquals(SAMPLE_APPS.size, status.appCount)
+    }
+
+    @Test
+    fun unsolicited304_isNotRecordedAsASuccessfulRefresh(): Unit = runBlocking {
+        val repo = repository()
+        repo.ensureInitialized()
+        // A beépített katalógusnál nem küldünk validátort: a 304 itt szabálytalan válasz.
+        https.server.enqueue(MockResponse.Builder().code(304).addHeader("ETag", "\"fake\"").build())
+        val failed = assertIs<RefreshOutcome.Failed>(repo.refresh(force = true))
+        assertEquals(CatalogErrorKind.HTTP, failed.kind)
+        val status = repo.status.first()
+        assertEquals(CatalogSource.BUNDLED, status.source)
+        assertNull(status.lastSuccessAt)
+        assertEquals(CatalogErrorKind.HTTP, status.lastError)
+    }
 }

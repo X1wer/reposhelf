@@ -90,4 +90,47 @@ class CatalogSignatureTest {
         val rsa = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
         assertFailsWith<Exception> { CatalogSignatureVerifier.parseKeys("rsa-key:${Base64.getEncoder().encodeToString(rsa.public.encoded)}") }
     }
+
+    // ---- CAT-13: csak secp256r1 kulcs; CAT-03: a kulcs megbízhatósága lekérdezhető ----
+
+    private fun spec(id: String, pair: KeyPair) = "$id:" + Base64.getEncoder().encodeToString(pair.public.encoded)
+
+    @Test
+    fun keyList_rejectsDuplicateIds_andReportsTrust() {
+        val keys = CatalogSignatureVerifier.parseKeys(spec("catalog-a", primary) + "," + spec("catalog-b", other))
+        assertEquals(listOf("catalog-a", "catalog-b"), keys.map { it.keyId })
+        assertFailsWith<IllegalArgumentException> { CatalogSignatureVerifier.parseKeys(spec("catalog-a", primary) + "," + spec("catalog-a", other)) }
+        val trusting = CatalogSignatureVerifier(keys)
+        assertEquals(true, trusting.trusts("catalog-b"))
+        assertEquals(false, trusting.trusts("catalog-c"))
+        assertEquals(false, trusting.trusts(""))
+    }
+
+    @Test
+    fun onlyTheP256Curve_isAccepted_notJustA256BitField() {
+        assertEquals(true, CatalogSignatureVerifier.isP256(primary.public as java.security.interfaces.ECPublicKey))
+        // secp256k1: szintén 256 bites mező, de más görbe (a korábbi, csak mezőméretet néző ellenőrzés átengedte volna).
+        fun hex(value: String) = java.math.BigInteger(value, 16)
+        val k1 = java.security.spec.ECParameterSpec(
+            java.security.spec.EllipticCurve(
+                java.security.spec.ECFieldFp(hex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F")), java.math.BigInteger.ZERO, java.math.BigInteger.valueOf(7),
+            ),
+            java.security.spec.ECPoint(
+                hex("79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798"), hex("483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8"),
+            ),
+            hex("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"), 1,
+        )
+        val foreign = object : java.security.interfaces.ECPublicKey {
+            override fun getParams() = k1
+            override fun getW() = k1.generator
+            override fun getAlgorithm() = "EC"
+            override fun getFormat() = "X.509"
+            override fun getEncoded() = ByteArray(0)
+        }
+        assertEquals(256, foreign.params.curve.field.fieldSize)
+        assertEquals(false, CatalogSignatureVerifier.isP256(foreign))
+        // P-384 kulcs a kulcslistában: elutasítva.
+        val p384 = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp384r1")) }.generateKeyPair()
+        assertFailsWith<IllegalArgumentException> { CatalogSignatureVerifier.parseKeys(spec("catalog-x", p384)) }
+    }
 }

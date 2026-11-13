@@ -19,13 +19,19 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import java.security.MessageDigest
+import io.github.x1wer.reposhelf.core.model.AssetFilterSyntax
+import io.github.x1wer.reposhelf.core.model.DisplayText
+import java.time.Duration
 import java.time.Instant
 import java.time.format.DateTimeParseException
-import java.util.regex.PatternSyntaxException
 
 sealed interface CatalogParseResult {
-    /** Érvényes katalógus. A [rejected] a kihagyott, hibás bejegyzések listája (a teljes katalógus ettől még érvényes). */
-    data class Parsed(val catalog: Catalog, val rejected: List<RejectedEntry>) : CatalogParseResult
+    /**
+     * Érvényes katalógus. A [rejected] a kihagyott, hibás bejegyzések listája (a teljes katalógus ettől még érvényes).
+     * [skippedUnknownProvider]: ennyi bejegyzés olyan szolgáltatóra hivatkozik, amelyet ez a kliens (még) nem ismer;
+     * ezek nem hibásak, csak kimaradnak (előre-kompatibilitás), és a hibaarányba sem számítanak bele.
+     */
+    data class Parsed(val catalog: Catalog, val rejected: List<RejectedEntry>, val skippedUnknownProvider: Int = 0) : CatalogParseResult
 
     /** A katalógus újabb fő sémaverziójú, mint amit ez a kliens ismer (C. 3.1.: „frissítsd az appot”). */
     data class UnsupportedSchema(val schemaVersion: Int) : CatalogParseResult
@@ -68,12 +74,17 @@ class CatalogParser(
 
         val serial = root.primitive("catalogSerial")?.longOrNull
             ?: return CatalogParseResult.Invalid(InvalidReason.MISSING_FIELD, "catalogSerial")
-        if (serial < 1) return CatalogParseResult.Invalid(InvalidReason.BAD_HEADER, "catalogSerial")
+        // Felső korlát: egy elírt vagy rosszindulatúan óriási sorszám minden későbbi katalógust „visszagörgetésként” zárna ki.
+        if (serial < 1 || serial > MAX_SERIAL) return CatalogParseResult.Invalid(InvalidReason.BAD_HEADER, "catalogSerial")
         val generatedAt = root.instant("generatedAt")
             ?: return CatalogParseResult.Invalid(InvalidReason.MISSING_FIELD, "generatedAt")
         val expiresAt = root.instant("expiresAt")
             ?: return CatalogParseResult.Invalid(InvalidReason.MISSING_FIELD, "expiresAt")
-        if (!expiresAt.isAfter(generatedAt)) return CatalogParseResult.Invalid(InvalidReason.BAD_HEADER, "expiresAt")
+        // Értelmes időtartomány (a szélsőséges évszám később túlcsordulást okozna) és korlátos érvényesség.
+        if (generatedAt.isBefore(MIN_INSTANT) || expiresAt.isAfter(MAX_INSTANT)) return CatalogParseResult.Invalid(InvalidReason.BAD_HEADER, "generatedAt/expiresAt")
+        if (!expiresAt.isAfter(generatedAt) || Duration.between(generatedAt, expiresAt) > MAX_VALIDITY) {
+            return CatalogParseResult.Invalid(InvalidReason.BAD_HEADER, "expiresAt")
+        }
 
         val entries = root["apps"] as? JsonArray ?: return CatalogParseResult.Invalid(InvalidReason.MISSING_FIELD, "apps")
         if (entries.size > maxApps) return CatalogParseResult.Invalid(InvalidReason.TOO_MANY_ENTRIES, entries.size.toString())
@@ -82,9 +93,11 @@ class CatalogParser(
         val rejected = ArrayList<RejectedEntry>()
         val seenIds = HashSet<String>()
         val seenRepos = HashSet<String>()
+        var skipped = 0
         entries.forEachIndexed { index, element ->
             when (val result = validateEntry(element)) {
                 is EntryResult.Rejected -> rejected += RejectedEntry(index, result.id, result.reason)
+                EntryResult.Skipped -> skipped++
                 is EntryResult.Ok -> {
                     val app = result.app
                     when {
@@ -96,10 +109,13 @@ class CatalogParser(
             }
         }
 
-        if (entries.isNotEmpty() && (accepted.isEmpty() || rejected.size > entries.size * maxInvalidRatio)) {
+        // A hibaarány az ISMERT szolgáltatójú bejegyzésekre vonatkozik. Használható bejegyzés nélküli katalógus (üres
+        // lista is) nem fogadható el: az a meglévő katalógust törölné.
+        val understood = entries.size - skipped
+        if (accepted.isEmpty() || rejected.size > understood * maxInvalidRatio) {
             return CatalogParseResult.Invalid(
                 InvalidReason.TOO_MANY_INVALID_ENTRIES,
-                "${rejected.size}/${entries.size} hibás bejegyzés",
+                "${rejected.size}/$understood hibás bejegyzés",
             )
         }
 
@@ -111,12 +127,15 @@ class CatalogParser(
             apps = accepted,
             contentSha256 = sha256Hex(bytes),
         )
-        return CatalogParseResult.Parsed(catalog, rejected)
+        return CatalogParseResult.Parsed(catalog, rejected, skipped)
     }
 
     private sealed interface EntryResult {
         data class Ok(val app: CatalogApp) : EntryResult
         data class Rejected(val id: String?, val reason: String) : EntryResult
+
+        /** Ismeretlen (ennél a kliensnél újabb) szolgáltató: nem hiba, a bejegyzés kimarad. */
+        data object Skipped : EntryResult
     }
 
     private fun validateEntry(element: JsonElement): EntryResult {
@@ -132,9 +151,10 @@ class CatalogParser(
 
         if (!ID_PATTERN.matches(dto.id)) return reject("érvénytelen azonosító")
         val name = dto.name.trim()
-        if (name.isEmpty() || name.length > MAX_NAME || name.any { it.isISOControl() }) return reject("érvénytelen név")
+        if (name.isEmpty() || name.length > MAX_NAME || !DisplayText.isSafe(name)) return reject("érvénytelen név")
 
-        val provider = ProviderId.fromId(dto.source.provider) ?: return reject("nem támogatott szolgáltató: ${dto.source.provider.take(20)}")
+        val provider = ProviderId.fromId(dto.source.provider)
+            ?: return if (PROVIDER_ID.matches(dto.source.provider)) EntryResult.Skipped else reject("érvénytelen szolgáltató")
         val repo = RepoRef.parsePath(provider, dto.source.repository) ?: return reject("érvénytelen repó-útvonal")
         val repositoryId = dto.source.repositoryId?.let { if (it > 0) ProviderRepoId(it) else return reject("érvénytelen repositoryId") }
 
@@ -149,16 +169,13 @@ class CatalogParser(
 
         if (dto.keywords.size > MAX_KEYWORDS) return reject("túl sok kulcsszó")
         val keywords = dto.keywords.map { it.trim() }
-        if (keywords.any { it.isEmpty() || it.length > MAX_KEYWORD || it.any(Char::isISOControl) }) return reject("érvénytelen kulcsszó")
+        if (keywords.any { it.isEmpty() || it.length > MAX_KEYWORD || !DisplayText.isSafe(it) }) return reject("érvénytelen kulcsszó")
 
-        val assetFilter = dto.assetFilter?.let {
-            if (it.length > MAX_ASSET_FILTER) return reject("túl hosszú assetFilter")
-            try {
-                Regex(it)
-            } catch (_: PatternSyntaxException) {
-                return reject("érvénytelen assetFilter")
-            }
-            it
+        // Csak a korlátos futási idejű reguláriskifejezés-részhalmaz fogadható el (ReDoS ellen; AssetFilterSyntax).
+        val assetFilter = dto.assetFilter?.let { filter ->
+            AssetFilterSyntax.violation(filter)?.let { return reject("nem megengedett assetFilter: $it") }
+            if (AssetFilterSyntax.compileOrNull(filter) == null) return reject("érvénytelen assetFilter")
+            filter
         }
 
         return EntryResult.Ok(
@@ -195,7 +212,15 @@ class CatalogParser(
         private const val MAX_CERTS = 10
         private const val MAX_KEYWORDS = 30
         private const val MAX_KEYWORD = 40
-        private const val MAX_ASSET_FILTER = 200
+        private val PROVIDER_ID = Regex("^[a-z][a-z0-9-]{1,31}$")
+
+        /** A sorszám felső korlátja (2^40): bőven elég, de egy elírás nem zárolhatja végleg a klienseket. */
+        const val MAX_SERIAL = 1L shl 40
+        private val MIN_INSTANT: Instant = Instant.parse("2020-01-01T00:00:00Z")
+        private val MAX_INSTANT: Instant = Instant.parse("2100-01-01T00:00:00Z")
+
+        /** A katalógus érvényessége legfeljebb ennyi lehet (a javasolt érték 90 nap; docs/ARCHITECTURE.md 7.3.). */
+        val MAX_VALIDITY: Duration = Duration.ofDays(400)
 
         fun sha256Hex(bytes: ByteArray): String =
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

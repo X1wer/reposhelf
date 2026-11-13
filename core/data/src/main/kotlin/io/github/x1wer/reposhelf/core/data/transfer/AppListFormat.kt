@@ -3,6 +3,7 @@
 
 package io.github.x1wer.reposhelf.core.data.transfer
 
+import io.github.x1wer.reposhelf.core.model.DisplayText
 import io.github.x1wer.reposhelf.core.model.ProviderId
 import io.github.x1wer.reposhelf.core.model.RepoRef
 import io.github.x1wer.reposhelf.core.update.AppOverrides
@@ -181,7 +182,7 @@ object AppListFormat {
         }
         val name = (obj.string("name") ?: repo.name).trim()
         // Vezérlő- és formázó karakter (pl. irányváltó, nulla szélességű) nem lehet a névben.
-        if (name.isEmpty() || name.length > 100 || name.any { it.isISOControl() || Character.getType(it) == Character.FORMAT.toInt() }) return Result.Bad("name")
+        if (name.isEmpty() || name.length > 100 || !DisplayText.isSafe(name)) return Result.Bad("name")
         val followed = obj.bool("followed") ?: return Result.Bad("followed")
         val favorite = obj.bool("favorite") ?: false
         if (!followed && !favorite) return Result.Bad("neither followed nor favorite")

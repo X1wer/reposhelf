@@ -37,7 +37,20 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.LocalPlatformContext
+import coil3.network.NetworkHeaders
+import coil3.network.httpHeaders
+import coil3.request.ImageRequest
 import io.github.x1wer.reposhelf.R
+import io.github.x1wer.reposhelf.core.network.ImageHttpClient
+import io.github.x1wer.reposhelf.ui.common.openUrl
 import io.github.x1wer.reposhelf.core.source.readme.MarkdownDocument
 import io.github.x1wer.reposhelf.core.source.readme.MdBlock
 import io.github.x1wer.reposhelf.core.source.readme.MdImage
@@ -50,22 +63,49 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  */
 @Composable
 fun MarkdownView(document: MarkdownDocument, showExternalImages: Boolean, onShowExternalImages: () -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    // A README megbízhatatlan szöveg: a link felirata mást mutathat, mint a tényleges cél. A GitHubon kívülre mutató
+    // hivatkozás ezért csak megerősítés után nyílik meg, a TELJES célcím megmutatásával.
+    var pendingLink by remember { mutableStateOf<String?>(null) }
+    val onLink: (String) -> Unit = { url -> if (isGitHubLink(url)) openUrl(context, url) else pendingLink = url }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Blocks(document.blocks, showExternalImages, onShowExternalImages, depth = 0)
+        Blocks(document.blocks, showExternalImages, onShowExternalImages, onLink, depth = 0)
+    }
+    pendingLink?.let { url ->
+        AlertDialog(
+            onDismissRequest = { pendingLink = null },
+            title = { Text(stringResource(R.string.link_confirm_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.link_confirm_note), style = MaterialTheme.typography.bodySmall)
+                    Text(url.take(500), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingLink = null
+                    openUrl(context, url)
+                }) { Text(stringResource(R.string.link_confirm_open)) }
+            },
+            dismissButton = { TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.action_cancel)) } },
+        )
     }
 }
 
+/** HTTPS-cím a GitHub saját hosztján: megerősítés nélkül megnyitható. */
+internal fun isGitHubLink(url: String): Boolean = url.toHttpUrlOrNull()?.let { it.isHttps && ImageHttpClient.isGitHubHost(it.host) } == true
+
 @Composable
-private fun Blocks(blocks: List<MdBlock>, showExternal: Boolean, onShowExternal: () -> Unit, depth: Int) {
-    blocks.forEach { Block(it, showExternal, onShowExternal, depth) }
+private fun Blocks(blocks: List<MdBlock>, showExternal: Boolean, onShowExternal: () -> Unit, onLink: (String) -> Unit, depth: Int) {
+    blocks.forEach { Block(it, showExternal, onShowExternal, onLink, depth) }
 }
 
 @Composable
-private fun Block(block: MdBlock, showExternal: Boolean, onShowExternal: () -> Unit, depth: Int) {
+private fun Block(block: MdBlock, showExternal: Boolean, onShowExternal: () -> Unit, onLink: (String) -> Unit, depth: Int) {
     val linkColor = MaterialTheme.colorScheme.primary
     when (block) {
         is MdBlock.Heading -> Text(
-            text = annotated(block.text, linkColor),
+            text = annotated(block.text, linkColor, onLink),
             style = when (block.level) {
                 1 -> MaterialTheme.typography.titleLarge
                 2 -> MaterialTheme.typography.titleMedium
@@ -73,7 +113,7 @@ private fun Block(block: MdBlock, showExternal: Boolean, onShowExternal: () -> U
             },
             modifier = Modifier.semantics { heading() },
         )
-        is MdBlock.Paragraph -> Text(annotated(block.text, linkColor), style = MaterialTheme.typography.bodyMedium)
+        is MdBlock.Paragraph -> Text(annotated(block.text, linkColor, onLink), style = MaterialTheme.typography.bodyMedium)
         is MdBlock.Code -> Text(
             text = block.code,
             fontFamily = FontFamily.Monospace,
@@ -86,12 +126,12 @@ private fun Block(block: MdBlock, showExternal: Boolean, onShowExternal: () -> U
         is MdBlock.Quote -> Column(
             Modifier.fillMaxWidth().border(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = RoundedCornerShape(4.dp)).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) { Blocks(block.blocks, showExternal, onShowExternal, depth + 1) }
+        ) { Blocks(block.blocks, showExternal, onShowExternal, onLink, depth + 1) }
         is MdBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             block.items.forEachIndexed { index, item ->
                 Row {
                     Text(if (block.ordered) "${block.start + index}." else "•", modifier = Modifier.widthIn(min = 20.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { Blocks(item, showExternal, onShowExternal, depth + 1) }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { Blocks(item, showExternal, onShowExternal, onLink, depth + 1) }
                 }
             }
         }
@@ -101,7 +141,7 @@ private fun Block(block: MdBlock, showExternal: Boolean, onShowExternal: () -> U
                 Row {
                     row.forEach { cell ->
                         Text(
-                            annotated(cell, linkColor),
+                            annotated(cell, linkColor, onLink),
                             style = if (rowIndex == 0) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodySmall,
                             modifier = Modifier.widthIn(min = 64.dp, max = 240.dp).border(0.5.dp, MaterialTheme.colorScheme.outlineVariant).padding(6.dp),
                         )
@@ -125,11 +165,21 @@ private fun ImageBlock(image: MdImage, showExternal: Boolean, onShowExternal: ()
             Placeholder(stringResource(R.string.image_external_placeholder, url.toHttpUrlOrNull()?.host ?: alt))
             OutlinedButton(onClick = onShowExternal) { Text(stringResource(R.string.action_load_external_images)) }
         }
-        else -> AsyncImage(
-            model = url,
-            contentDescription = image.alt.ifBlank { null },
-            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
-        )
+        else -> {
+            val platformContext = LocalPlatformContext.current
+            // GitHub-tárhelyű képnél a betöltő minden átirányítási lépést GitHub-hosztra korlátoz. Külső képnél (a
+            // felhasználó kérésére) a kérés belső jelölést kap, amely a hálózatra nem megy ki.
+            val model = remember(url, image.hostedByGitHub) {
+                val builder = ImageRequest.Builder(platformContext).data(url)
+                if (!image.hostedByGitHub) builder.httpHeaders(NetworkHeaders.Builder().set(ImageHttpClient.EXTERNAL_CONSENT_HEADER, "1").build())
+                builder.build()
+            }
+            AsyncImage(
+                model = model,
+                contentDescription = image.alt.ifBlank { null },
+                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+            )
+        }
     }
 }
 
@@ -143,7 +193,7 @@ private fun Placeholder(text: String) {
     )
 }
 
-private fun annotated(spans: List<MdSpan>, linkColor: androidx.compose.ui.graphics.Color): AnnotatedString = buildAnnotatedString {
+private fun annotated(spans: List<MdSpan>, linkColor: androidx.compose.ui.graphics.Color, onLink: (String) -> Unit): AnnotatedString = buildAnnotatedString {
     for (span in spans) {
         val style = SpanStyle(
             fontWeight = if (span.bold) FontWeight.Bold else null,
@@ -152,7 +202,8 @@ private fun annotated(spans: List<MdSpan>, linkColor: androidx.compose.ui.graphi
         )
         val link = span.link
         if (link != null) {
-            withLink(LinkAnnotation.Url(link, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)))) {
+            // Saját kattintáskezelő: a cél ellenőrzése (és külső címnél megerősítés) után nyílik meg, nem közvetlenül.
+            withLink(LinkAnnotation.Url(link, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))) { onLink(link) }) {
                 withStyle(style) { append(span.text) }
             }
         } else {
