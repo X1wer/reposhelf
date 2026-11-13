@@ -5,7 +5,23 @@ package io.github.x1wer.reposhelf.ui
 
 import android.net.Uri
 import androidx.annotation.StringRes
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavDestination
+import androidx.navigation.NavHostController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
@@ -52,12 +68,15 @@ import io.github.x1wer.reposhelf.ui.settings.SettingsScreen
 import io.github.x1wer.reposhelf.ui.sources.SourcesScreen
 import io.github.x1wer.reposhelf.ui.discover.DiscoverScreen
 
-/** A főmenü (C. 22.1.): Felfedezés, Alkalmazásaim, Frissítések, Saját források, Beállítások. */
-enum class TopLevelDestination(val route: String, @StringRes val labelRes: Int, val icon: ImageVector) {
+/**
+ * A főmenü (C. 22.1.): Felfedezés, Alkalmazásaim, Frissítések, Saját források, Beállítások. A navigációs sávban
+ * rövidebb felirat ([barLabelRes]) is lehet, mert öt elem fér el egy telefon szélességén (a képernyőcím a teljes név).
+ */
+enum class TopLevelDestination(val route: String, @StringRes val labelRes: Int, val icon: ImageVector, @StringRes val barLabelRes: Int = labelRes) {
     DISCOVER("discover", R.string.nav_discover, Icons.Filled.Search),
-    MY_APPS("my_apps", R.string.nav_my_apps, Icons.AutoMirrored.Filled.List),
+    MY_APPS("my_apps", R.string.nav_my_apps, Icons.AutoMirrored.Filled.List, R.string.nav_bar_my_apps),
     UPDATES("updates", R.string.nav_updates, Icons.Filled.Refresh),
-    SOURCES("sources", R.string.nav_sources, Icons.Filled.Add),
+    SOURCES("sources", R.string.nav_sources, Icons.Filled.Add, R.string.nav_bar_sources),
     SETTINGS("settings", R.string.nav_settings, Icons.Filled.Settings),
 }
 
@@ -66,6 +85,19 @@ private const val DETAILS_ARG = "id"
 private const val TRACKED_ROUTE = "tracked"
 private const val HISTORY_ROUTE = "history"
 private val CATALOG_ID = Regex("^[a-z0-9][a-z0-9._-]{1,63}$")
+
+/** Ettől a szélességtől (tablet, fekvő telefon) oldalsó navigációs sáv és korlátozott tartalomszélesség (C. 22.2.). */
+private const val WIDE_SCREEN_DP = 600
+private val MAX_CONTENT_WIDTH = 840.dp
+
+private fun NavHostController.openTopLevel(destination: TopLevelDestination) = navigate(destination.route) {
+    popUpTo(graph.findStartDestination().id) { saveState = true }
+    launchSingleTop = true
+    restoreState = true
+}
+
+private fun NavDestination?.isIn(destination: TopLevelDestination): Boolean =
+    this?.hierarchy?.any { it.route == destination.route } == true
 
 @Composable
 fun RepoShelfApp(
@@ -95,38 +127,56 @@ fun RepoShelfApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
+    val wide = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= WIDE_SCREEN_DP.dp
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                TopLevelDestination.entries.forEach { destination ->
-                    val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(destination.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        // A felirat mindig látszik, így a TalkBack is felolvassa; az ikon ezért dekoratív.
-                        icon = { Icon(destination.icon, contentDescription = null) },
-                        label = { Text(stringResource(destination.labelRes)) },
-                    )
+            if (!wide) {
+                NavigationBar {
+                    TopLevelDestination.entries.forEach { destination ->
+                        NavigationBarItem(
+                            selected = currentDestination.isIn(destination),
+                            onClick = { navController.openTopLevel(destination) },
+                            // A felirat mindig látszik, így a TalkBack is felolvassa; az ikon ezért dekoratív. Nagy
+                            // betűmérettel a felirat egy sorban marad, levágva (a TalkBack a teljes szöveget olvassa).
+                            icon = { Icon(destination.icon, contentDescription = null) },
+                            label = { Text(stringResource(destination.barLabelRes), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        )
+                    }
                 }
             }
         },
     ) { innerPadding ->
       val context = LocalContext.current
       val online by remember { (context.applicationContext as RepoShelfApplication).container.connectivity.online }.collectAsState()
-      Column(Modifier.padding(innerPadding)) {
+      Row(Modifier.padding(innerPadding)) {
+        if (wide) {
+            // A Scaffold már levonta a rendszersávokat: a sáv ne számolja újra.
+            NavigationRail(windowInsets = WindowInsets(0)) {
+                TopLevelDestination.entries.forEach { destination ->
+                    NavigationRailItem(
+                        selected = currentDestination.isIn(destination),
+                        onClick = { navController.openTopLevel(destination) },
+                        icon = { Icon(destination.icon, contentDescription = null) },
+                        label = { Text(stringResource(destination.barLabelRes), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+            }
+        }
+      Column(Modifier.weight(1f)) {
         // Offline: a helyi funkciók működnek; a csak online műveletekről a sáv tájékoztat (C. 24.).
         if (!online) OfflineBanner()
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.DISCOVER.route,
             // A külső Scaffold már levonta az állapotsor helyét: a képernyők felső sávja ne számolja újra.
-            modifier = Modifier.weight(1f).consumeWindowInsets(WindowInsets.statusBars),
+            // Széles kijelzőn a tartalom nem nyúlik a teljes szélességre (olvashatóság).
+            modifier = Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH).fillMaxWidth().consumeWindowInsets(WindowInsets.statusBars),
+            // Képernyőváltáskor nincs animáció (C. 22.2.: kerüld a fölösleges animációkat).
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None },
         ) {
             val openTracked: (TrackedApp) -> Unit = { app ->
                 // Mindig a követett sor adatlapja: a katalógusbejegyzést az adatlap csak akkor kapcsolja hozzá, ha az
@@ -167,6 +217,8 @@ fun RepoShelfApp(
                 SettingsScreen()
             }
         }
+        }
+      }
       }
     }
 }

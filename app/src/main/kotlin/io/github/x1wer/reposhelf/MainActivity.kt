@@ -4,7 +4,14 @@
 package io.github.x1wer.reposhelf
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
+import io.github.x1wer.reposhelf.ui.common.AppLocales
+import io.github.x1wer.reposhelf.ui.common.ThemeMode
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import io.github.x1wer.reposhelf.background.Notifier
@@ -46,6 +53,11 @@ class MainActivity : ComponentActivity() {
     /** Az átfedés miatt eldobott érintések (gesztusok) száma (D-127): a tájékoztató sáv jelzése; a műszeres teszt is ezt olvassa. */
     internal val droppedObscuredTouches = MutableStateFlow(0)
 
+    /** Android 9–12: a választott nyelv (D-132); Android 13-tól a rendszer kezeli. */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocales.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Az exportált indító-activity bejövő intentje megbízhatatlan: a Navigation belső deep link extráit eltávolítjuk,
         // mielőtt a navigációs gráf feldolgozhatná őket (IntentSanitizer).
@@ -56,8 +68,22 @@ class MainActivity : ComponentActivity() {
         // app előtérben van; Android 9–11-en a takart helyre érkező érintést a dispatchTouchEvent dobja el.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) window.setHideOverlayWindows(true)
         if (savedInstanceState == null) handleOpenIntent(intent)
+        val appearance = (application as RepoShelfApplication).container.appearance
         setContent {
-            RepoShelfTheme {
+            val themeMode by appearance.theme.collectAsState()
+            val dynamicColor by appearance.dynamicColor.collectAsState()
+            val dark = when (themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            // A rendszersávok ikonjai a választott témához igazodnak (nem a rendszeréhez).
+            DisposableEffect(dark) {
+                val style = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose { }
+            }
+            RepoShelfTheme(darkTheme = dark, dynamicColor = dynamicColor) {
                 val request by openTracked.collectAsState()
                 val selfRequest by openSelf.collectAsState()
                 val dropped by droppedObscuredTouches.collectAsState()

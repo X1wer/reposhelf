@@ -112,7 +112,10 @@
     <string name="transfer_confirm_title">Import this list?</string>
     <string name="transfer_confirm_summary">New apps from the catalog: %1$d. New own sources: %2$d. Already on your list: %3$d. Invalid entries (skipped): %4$d.</string>
     <string name="transfer_confirm_own_sources">Own sources are repositories outside the catalog. Import them only if you trust where this file came from:</string>
-    <string name="transfer_confirm_more">… and %1$d more</string>
+    <plurals name="transfer_confirm_more">
+        <item quantity="one">… and %1$d more</item>
+        <item quantity="other">… and %1$d more</item>
+    </plurals>
     <string name="transfer_confirm_note">Importing installs and downloads nothing. Settings of apps already on your list do not change, and an import never turns on automatic download, automatic installation or pre-releases.</string>
     <string name="transfer_import_confirm">Import</string>
     <string name="transfer_read_failed">The file could not be read.</string>

@@ -109,6 +109,13 @@ android {
         }
     }
 
+    // Az app maga vált nyelvet (D-132): egy esetleges app bundle-ből a nyelvi erőforrások nem válhatnak külön.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
     // A Google-kulccsal titkosított függőség-metaadat nem kerül az APK-ba (F-Droid, reprodukálható build; C. 31.).
     dependenciesInfo {
         includeInApk = false

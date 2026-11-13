@@ -4,6 +4,7 @@
 package io.github.x1wer.reposhelf
 
 import android.content.Context
+import io.github.x1wer.reposhelf.ui.common.AppearanceSettings
 import android.util.Log
 import io.github.x1wer.reposhelf.core.apk.ApkVerifier
 import io.github.x1wer.reposhelf.core.data.catalog.CatalogConfig
@@ -71,6 +72,9 @@ class AppContainer(private val context: Context) {
 
     /** Globális beállítások (C. 12.5–12.6.). */
     val settings by lazy { SettingsRepository.create(context) }
+
+    /** Téma és dinamikus színek (D-132); a nyelv: `AppLocales`. */
+    val appearance by lazy { AppearanceSettings(context) }
 
     /** A beállítások pillanatnyi értéke szinkron olvasáshoz (pl. update ownership a telepítéskor). */
     val settingsState: StateFlow<GlobalSettings> by lazy { settings.settings.stateIn(appScope, SharingStarted.Eagerly, GlobalSettings()) }

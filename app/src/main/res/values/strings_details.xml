@@ -35,14 +35,12 @@
     <string name="details_readme_missing">No README is available.</string>
     <string name="details_readme_restricted">The README is shown in restricted mode (text only).</string>
     <string name="details_release_notes">Release notes</string>
-    <string name="details_release_notes_empty">No release notes.</string>
     <string name="details_loading">Loading data from GitHub…</string>
     <string name="details_external_images_note">Images from other websites are not loaded automatically, because loading them reveals your IP address to those servers.</string>
     <string name="action_load_external_images">Load external images</string>
     <string name="image_external_placeholder">External image: %1$s</string>
     <string name="image_svg_placeholder">Image not shown (SVG): %1$s</string>
     <string name="image_unavailable">Image not available: %1$s</string>
-    <string name="code_block">Code</string>
 
     <string name="error_rate_limited_until">GitHub API limit reached. Try again after %1$s. (Anonymous limit: 60 requests per hour per IP address, shared with other devices on the same network.)</string>
     <string name="error_rate_limited_unknown">GitHub API limit reached. Try again later.</string>
@@ -167,5 +165,6 @@
     <string name="split_confirm_text">A split APK set will be installed. Its extra files can only be checked by Android’s own check during installation, not by RepoShelf beforehand. Only install trusted, verified apps this way!</string>
     <string name="split_confirm_install">Install anyway</string>
     <string name="finding_splits_verified_by_system">The split files of the set are checked only by Android during installation (RepoShelf could not check them beforehand).</string>
+    <string name="install_start_content_mismatch">the content written to the installer differs from the checked file</string>
 
 </resources>

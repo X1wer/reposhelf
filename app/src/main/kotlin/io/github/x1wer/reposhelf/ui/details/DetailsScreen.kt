@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
+import io.github.x1wer.reposhelf.core.update.InstallStart
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -111,7 +112,7 @@ private fun DetailsContent(state: DetailsUiState, vm: DetailsViewModel, onBack: 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(state.subject?.name.orEmpty()) },
+                title = { Text(state.subject?.name.orEmpty(), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back)) }
                 },
@@ -476,7 +477,8 @@ private fun InstallSection(state: DetailsUiState, vm: DetailsViewModel) {
                     OutlinedButton(onClick = vm::onInstallClicked) { Text(stringResource(R.string.action_retry)) }
                 }
                 is InstallUiState.StartFailed -> {
-                    Text(stringResource(R.string.install_failed, install.reason), color = MaterialTheme.colorScheme.error)
+                    val reason = if (install.reason == InstallStart.REASON_CONTENT_MISMATCH) stringResource(R.string.install_start_content_mismatch) else install.reason
+                    Text(stringResource(R.string.install_failed, reason), color = MaterialTheme.colorScheme.error)
                     OutlinedButton(onClick = vm::onInstallClicked) { Text(stringResource(R.string.action_retry)) }
                 }
                 InstallUiState.IdentityUnconfirmed -> {

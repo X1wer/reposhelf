@@ -32,7 +32,14 @@ data class InstallRequest(
 
 sealed interface InstallStart {
     data class Committed(val sessionId: Int) : InstallStart
+
+    /** [reason]: nyelvfüggetlen kód (pl. a kivétel osztályneve vagy [REASON_CONTENT_MISMATCH]); a felület fordítja. */
     data class Failed(val reason: String) : InstallStart
+
+    companion object {
+        /** A sessionbe írt bájtok SHA-256-ja eltér az ellenőrzött állományétól. */
+        const val REASON_CONTENT_MISMATCH = "SESSION_CONTENT_MISMATCH"
+    }
 }
 
 /** A platform telepítője (Androidon a PackageInstaller-session; docs/ARCHITECTURE.md 11.1.). */

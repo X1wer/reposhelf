@@ -7,6 +7,8 @@
     <string name="nav_updates">Frissítések</string>
     <string name="nav_sources">Saját források</string>
     <string name="nav_settings">Beállítások</string>
+    <string name="nav_bar_my_apps">Appjaim</string>
+    <string name="nav_bar_sources">Forrásaim</string>
 
     <string name="search_hint">Alkalmazások keresése</string>
     <string name="action_clear_search">Keresés törlése</string>
@@ -57,5 +59,14 @@
     <string name="refresh_updated">A katalógus frissült.</string>
     <string name="refresh_unchanged">A katalógus naprakész.</string>
     <string name="refresh_failed">A katalógus frissítése nem sikerült: %1$s</string>
+    <string name="appearance_section">Megjelenés</string>
+    <string name="appearance_theme">Téma</string>
+    <string name="theme_system">A rendszer szerint</string>
+    <string name="theme_light">Világos</string>
+    <string name="theme_dark">Sötét</string>
+    <string name="appearance_dynamic_color">A háttérkép színeinek használata</string>
+    <string name="appearance_language">Nyelv</string>
+    <string name="language_system">A rendszer szerint</string>
+    <string name="appearance_text_size_note">A betűméret a rendszer betűméret-beállítását követi.</string>
 
 </resources>

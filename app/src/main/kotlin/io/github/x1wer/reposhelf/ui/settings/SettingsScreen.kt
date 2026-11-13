@@ -155,6 +155,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = SettingsVi
             if (!notificationsAllowed) Text(stringResource(R.string.notif_disabled_banner), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { startSafely(context, container.notifier.settingsIntent()) }) { Text(stringResource(R.string.action_notification_settings)) }
 
+            Section(stringResource(R.string.appearance_section))
+            AppearanceSection(container)
+
             Section(stringResource(R.string.transfer_section))
             TransferSection(container)
 

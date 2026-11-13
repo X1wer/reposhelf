@@ -4,6 +4,8 @@
 package io.github.x1wer.reposhelf
 
 import android.app.Application
+import io.github.x1wer.reposhelf.ui.common.AppLocales
+import android.content.Context
 import android.util.Log
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -20,6 +22,11 @@ import kotlinx.coroutines.launch
 class RepoShelfApplication : Application(), SingletonImageLoader.Factory {
     lateinit var container: AppContainer
         private set
+
+    /** Android 9–12: a választott nyelv a háttérben készülő szövegekre (értesítések) is vonatkozik (D-132). */
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(AppLocales.wrap(base))
+    }
 
     override fun onCreate() {
         super.onCreate()

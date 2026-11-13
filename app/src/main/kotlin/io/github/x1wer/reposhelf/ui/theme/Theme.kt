@@ -35,8 +35,8 @@ private val DarkColors = darkColorScheme(
 )
 
 /**
- * Világos, sötét és rendszertéma (C. 22.2.). Android 12+ alatt a rendszer dinamikus színeit használja.
- * A felhasználói témaválasztás a 9. munkamenetben érkezik.
+ * Világos, sötét és rendszertéma (C. 22.2.). Android 12+ alatt kérésre a rendszer dinamikus színeit használja.
+ * A választás a Beállításokban (D-132): `AppearanceSettings`.
  */
 @Composable
 fun RepoShelfTheme(

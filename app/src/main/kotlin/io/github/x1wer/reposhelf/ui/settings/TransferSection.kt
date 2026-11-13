@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.x1wer.reposhelf.AppContainer
@@ -75,7 +76,7 @@ fun TransferSection(container: AppContainer) {
                         Text(stringResource(R.string.transfer_confirm_own_sources), style = MaterialTheme.typography.bodySmall)
                         p.preview.newOwnSources.take(MAX_SHOWN_SOURCES).forEach { Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
                         val more = p.preview.newOwnSources.size - MAX_SHOWN_SOURCES
-                        if (more > 0) Text(stringResource(R.string.transfer_confirm_more, more), style = MaterialTheme.typography.bodySmall)
+                        if (more > 0) Text(pluralStringResource(R.plurals.transfer_confirm_more, more, more), style = MaterialTheme.typography.bodySmall)
                     }
                     Text(stringResource(R.string.transfer_confirm_note), style = MaterialTheme.typography.bodySmall)
                 }

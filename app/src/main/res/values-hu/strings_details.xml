@@ -35,14 +35,12 @@
     <string name="details_readme_missing">Nincs elérhető README.</string>
     <string name="details_readme_restricted">A README korlátozott módban jelenik meg (csak szöveg).</string>
     <string name="details_release_notes">Kiadási megjegyzések</string>
-    <string name="details_release_notes_empty">Nincsenek kiadási megjegyzések.</string>
     <string name="details_loading">Adatok betöltése a GitHubról…</string>
     <string name="details_external_images_note">Más weboldalakról származó képek nem töltődnek be automatikusan, mert a betöltésük felfedi az IP-címedet az adott szervereknek.</string>
     <string name="action_load_external_images">Külső képek betöltése</string>
     <string name="image_external_placeholder">Külső kép: %1$s</string>
     <string name="image_svg_placeholder">A kép nem jelenik meg (SVG): %1$s</string>
     <string name="image_unavailable">A kép nem tölthető be: %1$s</string>
-    <string name="code_block">Kód</string>
 
     <string name="error_rate_limited_until">Elérted a GitHub API korlátját. Próbáld újra %1$s után. (A névtelen keret IP-címenként óránként 60 kérés, és az azonos hálózaton lévő többi eszközzel közös.)</string>
     <string name="error_rate_limited_unknown">Elérted a GitHub API korlátját. Próbáld újra később.</string>
@@ -167,5 +165,6 @@
     <string name="split_confirm_text">Split-APK-készlet telepítése fog történni. Ennek ellenőrzése csak a rendszer telepítéskori ellenőrzésére támaszkodhat, a RepoShelf előre nem tudja ellenőrizni. Csak megbízható, ellenőrzött alkalmazást telepíts így!</string>
     <string name="split_confirm_install">Telepítés így is</string>
     <string name="finding_splits_verified_by_system">A készlet kiegészítő állományait csak az Android ellenőrzi a telepítéskor (a RepoShelf előre nem tudta ellenőrizni).</string>
+    <string name="install_start_content_mismatch">a telepítőbe írt tartalom eltér az ellenőrzött állománytól</string>
 
 </resources>

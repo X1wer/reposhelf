@@ -111,7 +111,10 @@
     <string name="transfer_confirm_title">Importálod ezt a listát?</string>
     <string name="transfer_confirm_summary">Új alkalmazás a katalógusból: %1$d. Új saját forrás: %2$d. Már a listádon van: %3$d. Hibás bejegyzés (kimarad): %4$d.</string>
     <string name="transfer_confirm_own_sources">A saját források a katalóguson kívüli repók. Csak akkor importáld őket, ha megbízol abban, ahonnan ez a fájl származik:</string>
-    <string name="transfer_confirm_more">… és még %1$d</string>
+    <plurals name="transfer_confirm_more">
+        <item quantity="one">… és még %1$d</item>
+        <item quantity="other">… és még %1$d</item>
+    </plurals>
     <string name="transfer_confirm_note">Az import semmit nem telepít és nem tölt le. A listádon már szereplő alkalmazások beállításai nem változnak, és import soha nem kapcsol be automatikus letöltést, automatikus telepítést vagy előzetes kiadásokat.</string>
     <string name="transfer_import_confirm">Importálás</string>
     <string name="transfer_read_failed">A fájl nem olvasható.</string>

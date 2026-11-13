@@ -147,7 +147,7 @@ class PackageInstallerGateway(
                     val written = session.openRead(name).use { input -> sha256(input) }
                     if (!written.equals(apk.sha256, ignoreCase = true)) {
                         session.abandon()
-                        return@withContext InstallStart.Failed("A sessionbe írt tartalom eltér az ellenőrzöttől")
+                        return@withContext InstallStart.Failed(InstallStart.REASON_CONTENT_MISMATCH)
                     }
                 }
                 val intent = Intent(context, InstallResultReceiver::class.java).setPackage(context.packageName)
