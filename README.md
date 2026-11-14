@@ -8,14 +8,31 @@ as **GitHub Releases**. It shows a small, signed catalog of open-source apps, le
 yourself, checks every downloaded APK before installation, and keeps your apps up to date – manually or in the
 background, only where Android officially allows it.
 
-*Magyarul:* a felhasználói kézikönyv magyarul is elérhető: [USER_GUIDE.hu.md](USER_GUIDE.hu.md). Adatkezelés:
-[PRIVACY_POLICY.hu.md](PRIVACY_POLICY.hu.md), felelősségi tájékoztató: [DISCLAIMER.hu.md](DISCLAIMER.hu.md).
+*Magyarul:* letöltés: [legújabb kiadás](https://github.com/X1wer/reposhelf/releases/latest). A felhasználói kézikönyv magyarul is elérhető:
+[USER_GUIDE.hu.md](USER_GUIDE.hu.md). Adatkezelés: [PRIVACY_POLICY.hu.md](PRIVACY_POLICY.hu.md), felelősségi
+tájékoztató: [DISCLAIMER.hu.md](DISCLAIMER.hu.md).
 
-> **Project status: first release (0.1.0) in preparation.** Release APKs are built and signed only by the protected
-> release workflow; the expected signing certificate (SHA-256 `7aa8f53b…0e0d67b3d7`, see `gradle.properties`) is
-> compiled into the app for its self-update. See [SECURITY.md](SECURITY.md#before-the-first-public-release). Everything described as working below has been tested on
-> the Android emulator (Android 9 and Android 17) and with automated tests; nothing has been tested on a physical device
+> **Status: version 0.1.0 is released** (2026-11-14). Everything described as working below has been tested on the
+> Android emulator (Android 9 and Android 17) and with automated tests; nothing has been tested on a physical device
 > yet.
+
+## Download
+
+**[Download the latest release](https://github.com/X1wer/reposhelf/releases/latest)** – for Android 9 or newer.
+
+| File | For whom |
+|---|---|
+| [`RepoShelf-v0.1.0.apk`](https://github.com/X1wer/reposhelf/releases/download/v0.1.0/RepoShelf-v0.1.0.apk) | Recommended. Can update itself from this repository (it asks you on first start). |
+| [`RepoShelf-v0.1.0-fdroid.apk`](https://github.com/X1wer/reposhelf/releases/download/v0.1.0/RepoShelf-v0.1.0-fdroid.apk) | Without self-update. A separate app (`io.github.x1wer.reposhelf.fdroid`); the two do not update each other. |
+
+**How to install:** open this page on your phone, tap the APK to download it, open the downloaded file, and when Android
+asks, allow your browser or file manager to "Install unknown apps". Step by step: [user guide](USER_GUIDE.md#1-installation)
+([magyarul](USER_GUIDE.hu.md#1-telepítés)).
+
+**Verify (optional):** each release lists the SHA-256 sums of its files. The APKs are signed with the RepoShelf release
+key; certificate SHA-256: `7aa8f53bc27116f891e8539e8f0914918356bbb918e6a0261360552e0d67b3d7`
+(for example `apksigner verify --print-certs RepoShelf-v0.1.0.apk`). The app checks this same key before installing an
+update of itself.
 
 ## What it does
 

@@ -30,14 +30,19 @@ Contents:
 **Requirements:** Android 9 or newer, and free storage for RepoShelf (the APK is about 5 MB) and for the apps you
 download.
 
-RepoShelf is distributed as an APK on its GitHub Releases page. *No public release exists yet; this section describes how
-installation will work.*
+RepoShelf is distributed as an APK on its GitHub Releases page: **[latest release](https://github.com/X1wer/reposhelf/releases/latest)** (version 0.1.0
+was released on 2026-11-14). The standard build is `RepoShelf-vX.Y.Z.apk`; the build without self-update is
+`RepoShelf-vX.Y.Z-fdroid.apk`.
 
 1. Download the APK from the release page. Each release also lists a `SHA256SUMS` file; if you want, compare the
    checksum of the downloaded file with it.
 2. Open the APK. Android asks you to allow your browser or file manager to install apps ("Install unknown apps") –
    allow it for that app only.
 3. Confirm the installation in Android's dialog.
+
+The APKs are signed with the RepoShelf release key (certificate SHA-256
+`7aa8f53bc27116f891e8539e8f0914918356bbb918e6a0261360552e0d67b3d7`); RepoShelf accepts only updates of itself that
+are signed with this key.
 
 There are two variants: the standard (GitHub) build, which can update itself, and an F-Droid build
 (`io.github.x1wer.reposhelf.fdroid`) without self-update. They are separate apps and do not update each other. The
