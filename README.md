@@ -11,10 +11,9 @@ background, only where Android officially allows it.
 *Magyarul:* a felhasználói kézikönyv magyarul is elérhető: [USER_GUIDE.hu.md](USER_GUIDE.hu.md). Adatkezelés:
 [PRIVACY_POLICY.hu.md](PRIVACY_POLICY.hu.md), felelősségi tájékoztató: [DISCLAIMER.hu.md](DISCLAIMER.hu.md).
 
-> **Project status: in development, not yet released.** Version 0.1.0 is being prepared. There is no public release
-> and no published APK yet. The catalog is signed with its real key (`catalog-2026a`); the release signing key has not
-> been created yet, so signed release builds cannot be produced from this repository until the maintainer completes the steps in
-> [SECURITY.md](SECURITY.md#before-the-first-public-release). Everything described as working below has been tested on
+> **Project status: first release (0.1.0) in preparation.** Release APKs are built and signed only by the protected
+> release workflow; the expected signing certificate (SHA-256 `7aa8f53b…0e0d67b3d7`, see `gradle.properties`) is
+> compiled into the app for its self-update. See [SECURITY.md](SECURITY.md#before-the-first-public-release). Everything described as working below has been tested on
 > the Android emulator (Android 9 and Android 17) and with automated tests; nothing has been tested on a physical device
 > yet.
 

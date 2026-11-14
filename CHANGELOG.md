@@ -11,8 +11,9 @@ The release workflow (`.github/workflows/release.yml`) publishes the section who
 
 ## [Unreleased]
 
-Development towards the first public release (0.1.0). No version has been released yet. When 0.1.0 is released, the
-entries below move into a `## [0.1.0] - <date>` section.
+## [0.1.0] - 2026-11-14
+
+First public release.
 
 ### Added
 
@@ -69,7 +70,7 @@ entries below move into a `## [0.1.0] - <date>` section.
 
 ### Known limitations
 
-- Not yet tested on physical devices; the GitHub Actions workflows have not run on GitHub yet.
+- Not yet tested on physical devices (all device tests ran on the Android emulator, Android 9 and 17).
 - No GitHub sign-in (anonymous API limit of 60 requests per hour per IP address); GitHub only (no GitLab or Codeberg).
 - No "gentle update" for automatic installations; no warning for new sensitive permissions or for changed catalog
   entries. See [SECURITY.md](SECURITY.md#known-limitations).
