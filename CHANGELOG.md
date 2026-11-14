@@ -11,6 +11,11 @@ The release workflow (`.github/workflows/release.yml`) publishes the section who
 
 ## [Unreleased]
 
+### Changed
+
+- Release notes: hand-wrapped CHANGELOG lines are joined, links to repository files point to the tagged version, and a
+  "Verification" section lists the signing certificate fingerprint and the SHA-256 sums of the APKs.
+
 ## [0.1.0] - 2026-11-14
 
 First public release.

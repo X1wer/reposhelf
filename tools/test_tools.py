@@ -56,6 +56,41 @@ class ReleaseToolsTest(unittest.TestCase):
         with self.assertRaises(rt.ReleaseError):
             rt.changelog_section("## [1.0.0]\n- a\n## [1.0.0]\n- b\n", "1.0.0")
 
+    def test_notes_are_unwrapped_but_structure_and_code_stay(self):
+        text = (
+            "First release.\n\n### Added\n\n- One item that is\n  wrapped by hand.\n- Second item\n  - nested item\n\n"
+            "Paragraph line one\nline two.\n\n```\nkeep  this\nas is\n```\n| a | b |\n| - | - |\n"
+        )
+        self.assertEqual(
+            "First release.\n\n### Added\n\n- One item that is wrapped by hand.\n- Second item\n  - nested item\n\n"
+            "Paragraph line one line two.\n\n```\nkeep  this\nas is\n```\n| a | b |\n| - | - |\n",
+            rt.unwrap(text),
+        )
+
+    def test_relative_links_become_absolute_for_the_tag(self):
+        text = "See [SECURITY.md](SECURITY.md#known-limitations), [guide](./USER_GUIDE.md), [site](https://x.example/a), [top](#added)."
+        self.assertEqual(
+            "See [SECURITY.md](https://github.com/X1wer/reposhelf/blob/v0.2.0/SECURITY.md#known-limitations), "
+            "[guide](https://github.com/X1wer/reposhelf/blob/v0.2.0/USER_GUIDE.md), [site](https://x.example/a), [top](#added).",
+            rt.absolute_links(text, "X1wer/reposhelf", "v0.2.0"),
+        )
+        with self.assertRaises(rt.ReleaseError):
+            rt.absolute_links(text, "not a repo", "v0.2.0")
+
+    def test_verification_section_lists_signer_and_sums_in_a_code_block(self):
+        fp = "7aa8f53bc27116f891e8539e8f0914918356bbb918e6a0261360552e0d67b3d7"
+        self.assertEqual([fp], rt.release_signers(f"# x\nreposhelf.selfUpdate.signerSha256={fp}\n"))
+        for bad in ("reposhelf.selfUpdate.signerSha256=\n", "reposhelf.selfUpdate.signerSha256=ABC\n", "other=1\n"):
+            with self.assertRaises(rt.ReleaseError):
+                rt.release_signers(bad)
+        sums = "a" * 64 + "  RepoShelf-v0.2.0.apk\n"
+        section = rt.verification_section(sums, [fp])
+        self.assertIn("### Verification", section)
+        self.assertIn(f"`{fp}`", section)
+        self.assertIn("```\n" + "a" * 64 + "  RepoShelf-v0.2.0.apk\n```\n", section)
+        with self.assertRaises(rt.ReleaseError):
+            rt.verification_section("not a sum line\n", [fp])
+
     def test_sums_use_sha256sum_format(self):
         with tempfile.TemporaryDirectory() as tmp:
             b = pathlib.Path(tmp, "b.apk")
