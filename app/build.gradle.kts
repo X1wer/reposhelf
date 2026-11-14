@@ -50,7 +50,7 @@ android {
             "\"https://raw.githubusercontent.com/X1wer/reposhelf-catalog/main/dist/v1/catalog.json\"",
         )
         // Ennél régebbi katalógust a kliens nem fogad el (D-022). Legalább a beépített katalógus sorszáma.
-        buildConfigField("long", "MIN_CATALOG_SERIAL", "1L")
+        buildConfigField("long", "MIN_CATALOG_SERIAL", "2L")
         buildConfigField("String", "CATALOG_PUBLIC_KEYS", "\"$catalogKeys\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

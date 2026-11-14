@@ -107,9 +107,9 @@ RepoShelf cannot protect against everything. Known, documented limits:
 
 These steps are required before any APK may be published, and are deliberately enforced by the build:
 
-1. **Catalog key:** replace the test key (`catalog-test-2026a`) with the real catalog signing key (kept as a GitHub
-   Actions secret in a protected environment, with an offline backup), re-sign the catalog, and update
-   `reposhelf.catalog.publicKeys` and the built-in catalog. Release builds fail while the test key is configured.
+1. **Catalog key:** done – the test key was replaced by the real catalog signing key (`catalog-2026a`, P-256). The
+   maintainer signs the catalog locally; the private key is kept outside the repositories (an offline backup is the
+   maintainer's task). Release builds fail if a test key is ever configured again.
 2. **Release key:** create the app signing key offline (PKCS#12, RSA 4096), keep two offline copies, store it only as
    secrets of the protected `release` environment, and put its SHA-256 certificate fingerprint into
    `reposhelf.selfUpdate.signerSha256`. The release workflow refuses to release without it.

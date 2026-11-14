@@ -12,8 +12,8 @@ background, only where Android officially allows it.
 [PRIVACY_POLICY.hu.md](PRIVACY_POLICY.hu.md), felelősségi tájékoztató: [DISCLAIMER.hu.md](DISCLAIMER.hu.md).
 
 > **Project status: in development, not yet released.** Version 0.1.0 is being prepared. There is no public release
-> and no published APK yet. The catalog is currently signed with a **test key**, and the release signing key has not been
-> created yet, so release builds cannot be produced from this repository until the maintainer completes the steps in
+> and no published APK yet. The catalog is signed with its real key (`catalog-2026a`); the release signing key has not
+> been created yet, so signed release builds cannot be produced from this repository until the maintainer completes the steps in
 > [SECURITY.md](SECURITY.md#before-the-first-public-release). Everything described as working below has been tested on
 > the Android emulator (Android 9 and Android 17) and with automated tests; nothing has been tested on a physical device
 > yet.
@@ -87,8 +87,8 @@ Windows).
 ./gradlew :app:lintGithubDebug
 ```
 
-The debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Release builds intentionally fail while the
-catalog is signed with the test key; see [CONTRIBUTING.md](CONTRIBUTING.md) for the full list of checks, instrumented
+The debug APKs are written to `app/build/outputs/apk/<flavor>/debug/`. Release builds are unsigned unless the release
+signing environment variables are set (only in the protected release workflow); see [CONTRIBUTING.md](CONTRIBUTING.md) for the full list of checks, instrumented
 tests, release signing and the dependency verification workflow.
 
 ## Documentation

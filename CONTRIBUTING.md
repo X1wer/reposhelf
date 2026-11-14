@@ -78,13 +78,15 @@ python3 -I -m unittest discover -s tools
 ```
 
 ```bash
-./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease -Preposhelf.allowTestCatalogKey=true
+./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease
 ```
 
 - Lint treats `NewApi` as an error: the minimum SDK is 28. Lint does not check the pure JVM modules, which is why the
   bytecode API-level check exists.
-- The release build without `-Preposhelf.allowTestCatalogKey=true` **fails on purpose** while the catalog test key is
-  configured. Builds made with the switch get a `-testcatalog` version suffix and must never be distributed.
+- The release build **fails on purpose** if a catalog *test* key (an ID containing "test") is in
+  `reposhelf.catalog.publicKeys`. For local experiments with a test key, `-Preposhelf.allowTestCatalogKey=true` builds a
+  `-testcatalog` variant that must never be distributed. Without the signing environment variables the release APK is
+  unsigned.
 - On Windows, run Python with `python -X utf8 -I`.
 
 ### Instrumented tests

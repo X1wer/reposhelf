@@ -6,7 +6,8 @@
 # - `pull_request` (nem `pull_request_target`): idegen PR kódja csak olvasási jogot kap, titkot nem.
 # - Minden action commit SHA-hoz rögzített (a megjegyzésben a verzió); a frissítést a Dependabot javasolja.
 # - A `run` blokkokba nem kerül `${{ }}` kifejezés (parancsinjektálás ellen); minden érték környezeti változóból jön.
-# - A release-szerű build a katalógus TESZT-kulcsával készül: ez NEM kiadható, nem production release.
+# - A release build itt aláíratlan (a release-kulcs csak a release.yml védett környezetében van): NEM kiadható.
+#   A katalóguskulcs-kapu (D-121) teszt-kulcs nélkül átenged; ha egyszer újra teszt-kulcs kerülne a listába, a CI elbukik.
 name: CI
 
 on:
@@ -70,8 +71,8 @@ jobs:
           python3 -I tools/check_jvm_api_level.py "$ANDROID_HOME/platforms/android-37.0/data/api-versions.xml"
           "$JAVA_HOME/bin/javap" 28 core/*/build/classes/kotlin/main
 
-      - name: Release-like build (R8) with the TEST catalog key – not a production release
-        run: ./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease -Preposhelf.allowTestCatalogKey=true
+      - name: Release build (R8, unsigned) – checks the catalog key gate; not a production release
+        run: ./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease
 
       - name: Known vulnerabilities (OSV.dev; fails only for components shipped in the APK)
         run: |
