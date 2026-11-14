@@ -315,9 +315,13 @@ class FileDownloaderTest {
         assertEquals(0, server.requestCount)
 
         // Megbízható hosztról induló kérés, amely nem megbízható hosztra irányít át: a második lépés nem megy ki.
-        val other = "https://localhost:${server.port}/tracker.png"
+        // A szerver neve platformfüggő (Windows: „127.0.0.1”, Linux: „localhost”); az átirányítás célja a másik név,
+        // ugyanarra a szerverre (a teszt-tanúsítvány mindkettőre érvényes).
+        val trustedHost = server.url("/").host
+        val otherHost = if (trustedHost == "127.0.0.1") "localhost" else "127.0.0.1"
+        val other = "https://$otherHost:${server.port}/tracker.png"
         server.enqueue(MockResponse.Builder().code(302).addHeader("Location", other).build())
-        val redirected = kotlin.runCatching { imageClient { it == "127.0.0.1" }.newCall(okhttp3.Request.Builder().url(server.url("/b.png")).build()).execute().close() }
+        val redirected = kotlin.runCatching { imageClient { it == trustedHost }.newCall(okhttp3.Request.Builder().url(server.url("/b.png")).build()).execute().close() }
         assertTrue(redirected.exceptionOrNull() is java.io.IOException, redirected.toString())
         assertEquals(1, server.requestCount, "az átirányítás célja nem kapott kérést")
         server.takeRequest()
