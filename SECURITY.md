@@ -110,10 +110,14 @@ These steps are required before any APK may be published, and are deliberately e
 1. **Catalog key:** done – the test key was replaced by the real catalog signing key (`catalog-2026a`, P-256). The
    maintainer signs the catalog locally; the private key is kept outside the repositories (an offline backup is the
    maintainer's task). Release builds fail if a test key is ever configured again.
-2. **Release key:** create the app signing key offline (PKCS#12, RSA 4096), keep two offline copies, store it only as
-   secrets of the protected `release` environment, and put its SHA-256 certificate fingerprint into
-   `reposhelf.selfUpdate.signerSha256`. The release workflow refuses to release without it.
-3. **Repository settings:** branch and tag protection (pull requests only, code-owner review, required checks, no force
-   push), read-only default workflow token, approval for workflows from outside contributors, two-factor authentication,
-   secret scanning with push protection, and private vulnerability reporting.
-4. **First CI run:** the workflows have so far only been checked locally; their first run on GitHub must be reviewed.
+2. **Release key:** done – PKCS#12, RSA 4096, created offline by the maintainer; its SHA-256 certificate fingerprint
+   (`7aa8f53bc27116f891e8539e8f0914918356bbb918e6a0261360552e0d67b3d7`) is in `reposhelf.selfUpdate.signerSha256`.
+   The key is used only through secrets of the protected `release` environment; the release workflow refuses to
+   release an APK signed by any other key. Offline backups are the maintainer's task.
+3. **Repository settings:** done – the `main` branch requires a pull request and a green CI run (also for
+   administrators; no force push or deletion), the default workflow token is read-only, workflows from outside
+   contributors need approval, only SHA-pinned actions may run, secret scanning with push protection and private
+   vulnerability reporting are on, and the `release` environment needs the maintainer's approval and runs only for `v*`
+   tags. Two-factor authentication on the owner account is the maintainer's task.
+4. **First CI run:** done – CI and catalog validation pass on GitHub; the release workflow runs for the first time with
+   the `v0.1.0` tag.

@@ -98,6 +98,9 @@ android {
     buildTypes {
         debug {
             versionNameSuffix = "-dev"
+            // A debug buildet a fejlesztői debug-kulcs írja alá: a saját frissítésnél a futó példány aláírója az elvárt
+            // (D-110), így a helyi szimuláció (D-096) működik. A release build a gradle.properties ujjlenyomatát várja.
+            buildConfigField("String", "SELF_UPDATE_SIGNERS", "\"\"")
         }
         release {
             // Teszt-kulcsos próba-build: a verziónévből is látszik, hogy nem kiadható.
