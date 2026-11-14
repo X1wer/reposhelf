@@ -297,6 +297,10 @@ RepoShelf uses seven notification channels, which you can turn on or off one by 
   verify" and "Install". RepoShelf updates itself with the same checks as other apps; the signing key must match the
   installed RepoShelf. In the F-Droid build this section says "Self-update is not available in this build."
 
+**About**
+- The installed version, a short license note, "License" (the GNU General Public License text) and "Open-source
+  licenses" (the components RepoShelf uses and their licenses).
+
 **Per-app rules** (app page → "Update rules for this app"): "Update monitoring", "Automatic download", "Automatic
 install", "Pre-releases", "Update notifications", "Release delay". Each can be "Default (…)" – which follows the global
 setting shown in brackets – "On" or "Off".
@@ -316,6 +320,7 @@ RepoShelf raises a warning when something looks wrong. Warnings have three level
 | The update has a different package name | Critical | The download contains a different app. |
 | The update has an older version code than the installed app | Critical | A downgrade, which can reintroduce fixed bugs. |
 | The downloaded file is corrupted or invalid | Critical | The file was deleted; try again later. |
+| The package is older than a version that was installed on this device before | Warning (in the check results, before installing) | The app is not installed now, but a newer version was installed earlier. The developer may have withdrawn a newer release, or an old release was published again. Install it only if you expected this. |
 | The repository owner changed | Warning | The repository now belongs to someone else. Check that this is expected, then "Acknowledge". |
 | The repository disappeared or is unavailable | Warning | Checks pause; the installed app is not affected. |
 | Not compatible with this device / unexpected format / authenticity cannot be verified | Info | Shown with the check results. "Cannot be verified" is normal for a first installation without a signer recorded in the catalog. |

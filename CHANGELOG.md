@@ -47,6 +47,8 @@ entries below move into a `## [0.1.0] - <date>` section.
 - Light, dark and system theme, wallpaper colors (Android 12+), English and Hungarian interface with in-app language
   choice, side navigation rail on wide screens.
 - `github` and `fdroid` build variants; the `fdroid` variant has no self-update.
+- About section in Settings with the version, the license text and the third-party license notices (packaged into the
+  APK; the release workflow also attaches `THIRD_PARTY_NOTICES.md` to every release).
 - Documentation: README, architecture, security policy, contributing guide, user guide (English and Hungarian), privacy
   policy and disclaimer (English and Hungarian), third-party notices; license files.
 
@@ -60,7 +62,10 @@ entries below move into a `## [0.1.0] - <date>` section.
 - HTTPS only with host allow-lists and size limits; no backup or device transfer of app data; overlays hidden on
   Android 12+ and obscured touches dropped on Android 9–11.
 - Build hardening: Gradle dependency verification, release builds refused with the catalog test key, release signing
-  only from a protected CI environment, SHA-pinned GitHub Actions, OSV vulnerability check in CI.
+  only from a protected CI environment, SHA-pinned GitHub Actions, OSV vulnerability check in CI, third-party notices
+  checked in CI.
+- A package older than the highest version previously installed on the device gets a warning before installation, even
+  after the app was uninstalled; partial downloads are limited to 512 MiB in total.
 
 ### Known limitations
 

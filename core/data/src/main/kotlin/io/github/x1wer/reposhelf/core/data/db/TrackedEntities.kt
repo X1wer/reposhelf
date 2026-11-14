@@ -106,6 +106,11 @@ data class SignerPinEntity(
     val source: String,
     val pinnedAtMillis: Long,
     val lastVerifiedAtMillis: Long?,
+    /**
+     * A csomag ezen a készüléken valaha látott legnagyobb verziókódja (általunk telepítve vagy a telepített példányon
+     * megfigyelve; v7, SIG-07). Az eltávolítás után is megmarad: egy régebbi állomány újratelepítése figyelmeztetést kap.
+     */
+    val highestVersionCode: Long? = null,
 )
 
 /** Egy letöltött kiadási állomány vizsgálatának eredménye: ugyanazt az állományt nem kell újra letölteni (ARCH 9., 11.1.). */

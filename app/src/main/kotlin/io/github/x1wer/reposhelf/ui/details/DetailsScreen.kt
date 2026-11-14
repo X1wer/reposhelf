@@ -699,6 +699,7 @@ internal fun findingText(kind: FindingKind): String = stringResource(
         FindingKind.VERSION_DOWNGRADE -> R.string.finding_version_downgrade
         FindingKind.SAME_VERSION -> R.string.finding_same_version
         FindingKind.BELOW_MIN_VERSION -> R.string.finding_below_min_version
+        FindingKind.OLDER_THAN_PREVIOUS_INSTALL -> R.string.finding_older_than_previous_install
         FindingKind.INCOMPATIBLE_SDK -> R.string.finding_incompatible_sdk
         FindingKind.TARGET_SDK_TOO_OLD -> R.string.finding_target_sdk_too_old
         FindingKind.INCOMPATIBLE_ABI -> R.string.finding_incompatible_abi

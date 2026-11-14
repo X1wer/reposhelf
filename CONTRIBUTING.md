@@ -110,6 +110,13 @@ adb install -r -t app/build/outputs/apk/androidTest/github/debug/app-github-debu
 adb shell am instrument -w -e class io.github.x1wer.reposhelf.ObscuredTouchTest io.github.x1wer.reposhelf.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
+The same way, `LargeCatalogPerformanceTest` loads and searches a generated, signed 5000-entry catalog in an in-memory
+database on the device and logs the timings (`adb logcat -s RepoShelfPerf`):
+
+```bash
+adb shell am instrument -w -e class io.github.x1wer.reposhelf.LargeCatalogPerformanceTest io.github.x1wer.reposhelf.test/androidx.test.runner.AndroidJUnitRunner
+```
+
 `python3 -I tools/split_install_check.py` (with an emulator running) checks that Android rejects inconsistent split APK
 sets; it uses temporary keys.
 
@@ -152,7 +159,8 @@ immediately (`--ez io.github.x1wer.reposhelf.debug.RUN_BACKGROUND_CHECK true`) a
    python3 -I tools/osv_check.py --runtime build/runtime-deps.txt --all gradle/verification-metadata.xml
    ```
 
-4. Update the component list in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); the tool refuses unknown licenses:
+4. Update the component list in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (CI fails with `--check` if it is out
+   of date; the file is also packaged into the APK and attached to releases); the tool refuses unknown licenses:
 
    ```bash
    python3 -I tools/third_party_notices.py --tree build/runtime-deps.txt --file THIRD_PARTY_NOTICES.md

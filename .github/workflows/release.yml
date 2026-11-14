@@ -126,11 +126,13 @@ jobs:
           cp app/build/outputs/apk/fdroid/release/app-fdroid-release.apk "dist/RepoShelf-$TAG-fdroid.apk"
           python3 -I tools/release_tools.py sums dist/*.apk --out dist/SHA256SUMS
           cat dist/SHA256SUMS >> "$RUNNER_TEMP/release-notes.md"
+          # The license notices travel with the binaries (BSD notice requirement, D-136).
+          cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
 
       - name: Draft GitHub release (publishing stays a manual step)
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: >-
-          gh release create "$TAG" dist/RepoShelf-*.apk dist/SHA256SUMS
+          gh release create "$TAG" dist/RepoShelf-*.apk dist/SHA256SUMS dist/THIRD_PARTY_NOTICES.md
           --draft --verify-tag --title "RepoShelf $TAG" --notes-file "$RUNNER_TEMP/release-notes.md"

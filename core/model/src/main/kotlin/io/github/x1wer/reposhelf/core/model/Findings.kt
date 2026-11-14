@@ -50,6 +50,13 @@ enum class FindingKind {
     /** A verziókód a katalógusban rögzített minimum alatt van. */
     BELOW_MIN_VERSION,
 
+    /**
+     * Nem telepített alkalmazásnál: a verziókód kisebb, mint a csomag ezen a készüléken valaha látott legnagyobb
+     * verziókódja (SIG-07: egy régi, érvényesen aláírt kiadás újbóli közzététele). Figyelmeztetés, nem tiltás: a
+     * fejlesztő visszavonhatta a hibás újabb kiadást.
+     */
+    OLDER_THAN_PREVIOUS_INSTALL,
+
     /** Az alkalmazás magasabb Android-verziót igényel, mint az eszközé. */
     INCOMPATIBLE_SDK,
 

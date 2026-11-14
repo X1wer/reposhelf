@@ -78,8 +78,11 @@ RepoShelf cannot protect against everything. Known, documented limits:
    notice such releases.
 2. **First installation is trust on first use** unless the catalog records the signer. RepoShelf shows the signer
    fingerprint so it can be compared with the developer's published value.
-3. **Downgrade protection for apps that are not installed** relies only on the catalog's optional `minVersionCode` and on
-   choosing the latest release; an old, validly signed version could be offered as a first installation (planned).
+3. **Downgrade protection for apps that are not installed** is limited: RepoShelf remembers the highest version code it
+   has seen installed for each package, and a package older than that gets a **warning** (not a block, because a
+   developer may withdraw a broken release). On a device that never had the app, only the catalog's optional
+   `minVersionCode` and the choice of the latest release apply, so an old, validly signed version could be offered as a
+   first installation.
 4. **Split APK sets:** split files are verified only by Android at install time (user decision, explicit confirmation).
 5. **No warning yet when a catalog entry of a followed app changes** or disappears (the entry's data is already ignored
    if it points elsewhere; planned).
@@ -87,7 +90,9 @@ RepoShelf cannot protect against everything. Known, documented limits:
 7. **Background installations of other apps** keep their in-progress state only in memory; if the process dies between
    commit and result, the history entry and notification are missing (the next check sees the real version).
 8. **No "gentle update":** an automatic update may replace an app that is in use.
-9. **No overall quota for the download folder**; leftovers are removed by age (2 / 7 days).
+9. **Download folder:** partial downloads of other files are limited to 512 MiB in total (oldest first); completed files
+   waiting for confirmation are removed by age (2 days; partial files after 7 days). There is no hard limit for completed
+   files beyond the free-space check.
 10. **Package visibility:** only apps with a launcher icon are visible to RepoShelf (it does not request
     `QUERY_ALL_PACKAGES`).
 11. **The anonymous GitHub API** limit (60 requests/hour per IP) can be exhausted by others on the same network, which

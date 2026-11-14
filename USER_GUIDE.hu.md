@@ -316,6 +316,10 @@ A RepoShelf hét értesítési csatornát használ; ezeket az Android értesít�
   aláíró kulcsnak egyeznie kell a telepített RepoShelfével. Az F-Droid-változatban ez áll: „Ebben a változatban nincs
   saját frissítés.”
 
+**Névjegy**
+- A telepített verzió, rövid licencmegjegyzés, „Licenc” (a GNU General Public License szövege) és „Nyílt forráskódú
+  licencek” (a RepoShelf által használt komponensek és licenceik).
+
 **Alkalmazásonkénti szabályok** (adatlap → „Frissítési szabályok ehhez az alkalmazáshoz”): „Frissítésfigyelés”,
 „Automatikus letöltés”, „Automatikus telepítés”, „Előzetes kiadások”, „Frissítési értesítések”, „Kiadás-késleltetés”.
 Mindegyik lehet „Alapértelmezett (…)” – ez a zárójelben látható globális beállítást követi –, „Be” vagy „Ki”.
@@ -335,6 +339,7 @@ A RepoShelf figyelmeztet, ha valami gyanús. A figyelmeztetéseknek három szint
 | A frissítés más csomagazonosítót tartalmaz | Kritikus | A letöltés egy másik alkalmazást tartalmaz. |
 | A frissítés verziókódja régebbi, mint a telepítetté | Kritikus | Visszalépés, amely már javított hibákat hozhat vissza. |
 | A letöltött állomány sérült vagy érvénytelen | Kritikus | A fájl törlődött; próbáld újra később. |
+| A csomag régebbi egy olyan verziónál, amely korábban már telepítve volt ezen a készüléken | Figyelmeztetés (az ellenőrzés eredményében, telepítés előtt) | Az alkalmazás most nincs telepítve, de korábban egy újabb verziója fent volt. Lehet, hogy a fejlesztő visszavont egy újabb kiadást, de az is lehet, hogy egy régi kiadást tettek közzé újra. Csak akkor telepítsd, ha erre számítottál. |
 | Megváltozott a repó tulajdonosa | Figyelmeztetés | A repó mostantól valaki másé. Ellenőrizd, hogy ez várható volt-e, majd „Tudomásul vettem”. |
 | A repó eltűnt vagy nem érhető el | Figyelmeztetés | Az ellenőrzés szünetel; a telepített alkalmazást nem érinti. |
 | Nem kompatibilis a készülékkel / váratlan formátum / a forrás hitelessége nem ellenőrizhető | Tájékoztatás | A vizsgálati eredményben látszik. A „nem ellenőrizhető” első telepítésnél, katalógusban rögzített aláíró nélkül természetes. |

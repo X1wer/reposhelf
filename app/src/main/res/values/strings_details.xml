@@ -119,6 +119,7 @@
     <string name="finding_version_downgrade">The package is older than the installed version.</string>
     <string name="finding_same_version">The package has the same version as the installed app (reinstall).</string>
     <string name="finding_below_min_version">The package is older than the minimum version recorded in the catalog.</string>
+    <string name="finding_older_than_previous_install">The package is older than a version that was installed on this device before. The developer may have withdrawn a newer release, or an old release was published again. Install it only if you expected this.</string>
     <string name="finding_incompatible_sdk">The app requires a newer Android version than this device has.</string>
     <string name="finding_target_sdk_too_old">The app targets an Android version that is too old; Android will not install it.</string>
     <string name="finding_incompatible_abi">The app\'s native code does not run on this device\'s processor.</string>

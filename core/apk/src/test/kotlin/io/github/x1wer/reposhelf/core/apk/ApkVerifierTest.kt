@@ -146,6 +146,22 @@ class ApkVerifierTest {
     }
 
     @Test
+    fun olderThanAPreviouslyInstalledVersion_warnsWhenNotInstalled() {
+        val v1 = listOf(downloaded(fixture("fixture-v1-keyA.apk")))
+        // Nincs telepítve, de korábban a 2-es verziókód már fent volt: figyelmeztetés, nem tiltás (SIG-07).
+        val replay = verifier.verify(v1, context().copy(previouslyInstalledVersionCode = 2))
+        assertTrue(replay.isInstallable)
+        val finding = replay.findings.single { it.kind == FindingKind.OLDER_THAN_PREVIOUS_INSTALL }
+        assertEquals(Severity.WARNING, finding.severity)
+        // Azonos vagy kisebb korábbi verziókódnál nincs jelzés.
+        assertFalse(FindingKind.OLDER_THAN_PREVIOUS_INSTALL in kinds(verifier.verify(v1, context().copy(previouslyInstalledVersionCode = 1))))
+        // Telepített példánynál a valódi visszalépés-tiltás érvényes, nem ez a jelzés.
+        val installedNewer = verifier.verify(v1, context(installed = installedV(2, certA)).copy(previouslyInstalledVersionCode = 3))
+        assertFalse(FindingKind.OLDER_THAN_PREVIOUS_INSTALL in kinds(installedNewer))
+        assertTrue(FindingKind.VERSION_DOWNGRADE in kinds(installedNewer))
+    }
+
+    @Test
     fun belowCatalogMinimumVersion_isBlocked() {
         val report = verifier.verify(listOf(downloaded(fixture("fixture-v1-keyA.apk"))), context(minVersionCode = 2))
         assertTrue(FindingKind.BELOW_MIN_VERSION in kinds(report))

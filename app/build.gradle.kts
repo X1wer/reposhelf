@@ -170,6 +170,33 @@ val checkReleaseCatalogKey = tasks.register("checkReleaseCatalogKey") {
 // Minden release-változat (githubRelease, fdroidRelease, …) előfeltétele: pre<Változat>ReleaseBuild.
 tasks.matching { it.name.startsWith("pre") && it.name.endsWith("ReleaseBuild") }.configureEach { dependsOn(checkReleaseCatalogKey) }
 
+/**
+ * A licencszövegek az APK-ba (D-138): a repó gyökerében lévő `LICENSE` és `THIRD_PARTY_NOTICES.md` (egyetlen forrás,
+ * nincs másolat a repóban) generált assetként, `licenses/` alatt; a Beállítások „Névjegy” szakasza mutatja.
+ */
+abstract class CopyLicenseTexts : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val texts: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val target = outputDir.get().asFile.resolve("licenses")
+        target.deleteRecursively()
+        target.mkdirs()
+        texts.files.forEach { it.copyTo(target.resolve(it.name), overwrite = true) }
+    }
+}
+val copyLicenseTexts = tasks.register<CopyLicenseTexts>("copyLicenseTexts") {
+    texts.from(rootProject.file("LICENSE"), rootProject.file("THIRD_PARTY_NOTICES.md"))
+}
+androidComponents {
+    onVariants { variant -> variant.sources.assets?.addGeneratedSourceDirectory(copyLicenseTexts, CopyLicenseTexts::outputDir) }
+}
+
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:catalog"))

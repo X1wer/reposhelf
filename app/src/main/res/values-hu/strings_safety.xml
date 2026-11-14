@@ -130,4 +130,14 @@
     <string name="notif_self_installed_title">A RepoShelf frissült</string>
     <string name="obscured_touch_notice">Egy másik alkalmazás (például képernyőszűrő vagy éjszakai fény) takarja a RepoShelfet, ezért a biztonságod érdekében ott nem fogadja el az érintést. Kapcsold ki azt az alkalmazást, majd próbáld újra.</string>
 
+    <string name="about_section">Névjegy</string>
+    <string name="about_version">RepoShelf %1$s</string>
+    <string name="about_license_note">A RepoShelf szabad szoftver a GNU General Public License 3-as vagy későbbi változata szerint, és nem jár hozzá semmilyen garancia. Nyílt forráskódú komponenseket használ, azok saját licence szerint.</string>
+    <string name="about_show_license">Licenc</string>
+    <string name="about_show_notices">Nyílt forráskódú licencek</string>
+    <string name="about_license_title">GNU General Public License</string>
+    <string name="about_notices_title">Harmadik féltől származó komponensek</string>
+    <string name="about_text_unavailable">A szöveg nem tölthető be.</string>
+    <string name="action_close">Bezárás</string>
+
 </resources>

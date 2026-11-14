@@ -79,6 +79,8 @@ object WarningClassifier {
                 // A split-készlet rendszerre bízott ellenőrzése: a telepítés előtti megerősítés jelzi, nem tárolt riasztás (D-128).
                 FindingKind.REPO_RENAMED, FindingKind.NO_PROVIDER_DIGEST, FindingKind.SAME_VERSION, FindingKind.PRERELEASE,
                 FindingKind.NO_INSTALLABLE_RELEASE, FindingKind.SPLITS_VERIFIED_BY_SYSTEM -> continue
+                // Nem telepített alkalmazásnál, a telepítés előtti jelentésben látszik (SIG-07); nem tárolt riasztás.
+                FindingKind.OLDER_THAN_PREVIOUS_INSTALL -> continue
             }
             val existing = result[category]
             // Ugyanazon eseten belül a súlyosabb marad.

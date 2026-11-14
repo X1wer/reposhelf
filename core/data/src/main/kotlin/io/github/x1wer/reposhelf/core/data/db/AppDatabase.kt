@@ -24,6 +24,8 @@ import androidx.room.RoomDatabase
  * - 5: az adatlap tartós (offline) gyorsítótára (7. munkamenet). Csak új tábla: automatikus migráció.
  * - 6: a katalógust elfogadó aláírókulcs azonosítója (`catalog_state.signedByKeyId`, 8. munkamenet). Új, nullázható
  *   oszlop: automatikus migráció; a korábbi sor (kulcs nélkül) az első indításkor a beépített katalógusból újraalapozódik.
+ * - 7: a csomag ezen a készüléken látott legnagyobb verziókódja (`signer_pin.highestVersionCode`, 11. munkamenet, SIG-07).
+ *   Új, nullázható oszlop: automatikus migráció; a meglévő pineknél az első megfigyeléskor töltődik ki.
  */
 @Database(
     entities = [
@@ -31,9 +33,9 @@ import androidx.room.RoomDatabase
         TrackedAppEntity::class, AppSettingsOverrideEntity::class, SignerPinEntity::class, ApkAnalysisEntity::class,
         NotificationLogEntity::class, SecurityWarningEntity::class, UpdateHistoryEntity::class, DetailsCacheEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5), AutoMigration(from = 5, to = 6), AutoMigration(from = 6, to = 7)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao

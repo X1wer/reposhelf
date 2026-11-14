@@ -84,7 +84,7 @@ No Google Play Services, Firebase, analytics or crash reporting.
 
 ## 4. Data model
 
-Room database, schema version 6 (exported schemas in `core/data/schemas/`; every version has an automatic migration and
+Room database, schema version 7 (exported schemas in `core/data/schemas/`; every version has an automatic migration and
 a migration test from the previous exported schema).
 
 | Table | Contents |
@@ -93,7 +93,7 @@ a migration test from the previous exported schema).
 | `catalog_app`, `catalog_app_fts` | catalog entries with normalized search columns; FTS4 index |
 | `tracked_app` | every app the user has a relationship with: origin (catalog / user), repository path and permanent ID, owner ID, learned package name, follow and favorite flags, installation flags, last check status and error, repository state (OK / renamed / owner changed / ID changed / not found / unavailable), latest release and installed release data |
 | `app_settings_override` | per-app overrides (`null` = global setting): monitoring, pre-releases, automatic download, automatic install, notifications, release delay |
-| `signer_pin` | recorded signing certificates **per package** (source: first install via RepoShelf / existing install / catalog); kept when an app is removed from the list |
+| `signer_pin` | recorded signing certificates **per package** (source: first install via RepoShelf / existing install / catalog) and the highest version code ever seen installed on this device; kept when an app is removed from the list or uninstalled |
 | `apk_analysis` | per-asset analysis result (SHA-256, package, version, signer, verdict) – confirms updates and prevents re-offering a rejected file |
 | `details_cache` | saved repository, release and README data for offline app pages (max. 300 rows) |
 | `security_warning` | one row per warning case (`dedupKey`), severity, first/last seen, acknowledged, resolved |
@@ -196,9 +196,9 @@ Each step is a separate class with its own input and output, returning `StepResu
 | 1 | Discovery (`ReleaseDiscovery`) | repository identity (permanent ID, renames, owner changes, hijacking); drafts excluded; pre-releases only if enabled; release delay; only releases with an installable asset |
 | 2 | Version (`VersionResolver`) | analyzed version code of the selected asset > identity of the installed release > version name > release date > "cannot be determined" (not an error) |
 | 3 | Compatibility (`CompatibilityAssessor`) | format (`.apk`; `.aab`/`.apks`/`.xapk` rejected), ABI tokens, `assetFilter`, storage; **preliminary estimate** |
-| 4 | Download (`ApkDownloader`) | HTTPS and host rules, expected size, resumable `.part` file with identical-content check, SHA-256 while downloading |
+| 4 | Download (`ApkDownloader`) | HTTPS and host rules, expected size, resumable `.part` file with identical-content check, SHA-256 while downloading; partial files of other downloads limited to 512 MiB in total (oldest removed first, never one written in the last 10 minutes) |
 | 5 | Integrity (`ApkVerifier.checkIntegrity`) | size, SHA-256 vs. GitHub digest, ZIP structure, valid APK |
-| 6 | Signature (`ApkVerifier.checkSignature`) | the three levels (see SECURITY.md); package name, version code, minimum SDK, ABI |
+| 6 | Signature (`ApkVerifier.checkSignature`) | the three levels (see SECURITY.md); package name, version code (for an app that is not installed: a warning if it is older than the highest version previously installed on the device), minimum SDK, ABI |
 | 7 | Install start (`InstallInitiator`) | re-checks package name, version code and signer against the state **at install time**; no critical finding; session bytes re-hashed |
 | 8 | Result (`InstallResultVerifier`) | installed version code and signer read back; signer recorded on first install; history entry; failure reasons mapped (including developer verification) |
 
@@ -332,7 +332,7 @@ updates the pinned actions. The workflows have not run on GitHub yet.
 
 - GitHub sign-in (token or device flow), GitLab and Codeberg providers.
 - `GENTLE_UPDATE` for unattended updates, user pre-approval, a warning for newly requested sensitive permissions, a
-  warning when a followed app's catalog entry changes, replay protection for first installations, a download folder quota,
-  persistent state for background installations of other apps.
-- In-app "About" and "Licenses" screens.
+  warning when a followed app's catalog entry changes, persistent state for background installations of other apps.
+- Replay protection for a first installation on a device that never had the app (only the catalog's `minVersionCode`
+  applies there; after an uninstall, an older package gets a warning).
 - Catalog fallback hosts; a releases hint file to save API requests.

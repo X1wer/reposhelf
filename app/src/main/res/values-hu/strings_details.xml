@@ -119,6 +119,7 @@
     <string name="finding_version_downgrade">A csomag régebbi a telepített verziónál.</string>
     <string name="finding_same_version">A csomag verziója megegyezik a telepítettel (újratelepítés).</string>
     <string name="finding_below_min_version">A csomag régebbi a katalógusban rögzített minimális verziónál.</string>
+    <string name="finding_older_than_previous_install">A csomag régebbi egy olyan verziónál, amely korábban már telepítve volt ezen a készüléken. Lehet, hogy a fejlesztő visszavont egy újabb kiadást, de az is lehet, hogy egy régi kiadást tettek közzé újra. Csak akkor telepítsd, ha erre számítottál.</string>
     <string name="finding_incompatible_sdk">Az alkalmazás újabb Android-verziót igényel, mint ami az eszközön van.</string>
     <string name="finding_target_sdk_too_old">Az alkalmazás túl régi Android-verziót céloz, ezért az Android nem telepíti.</string>
     <string name="finding_incompatible_abi">Az alkalmazás natív kódja nem fut ennek az eszköznek a processzorán.</string>

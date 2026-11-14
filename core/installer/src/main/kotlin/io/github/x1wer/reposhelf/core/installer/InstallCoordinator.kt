@@ -57,6 +57,8 @@ class InstallCoordinator(
     private val initiator: InstallInitiator,
     /** Az első telepítéskor (vagy a már telepített példányról) rögzített aláírók csomagonként (C. 19.). */
     private val storedPins: suspend (packageName: String) -> List<String>,
+    /** A csomag ezen a készüléken valaha látott legnagyobb verziókódja (SIG-07), ha ismert. */
+    private val highestSeenVersionCode: suspend (packageName: String) -> Long? = { null },
 ) {
     /**
      * 4–6. lépés. A megbízhatatlan állomány feldolgozása közbeni VÁRATLAN hiba (pl. egy értelmező kivétele) nem
@@ -107,16 +109,21 @@ class InstallCoordinator(
     private suspend fun verify(files: List<DownloadedApk>, target: InstallTarget): PreparedInstall {
         val device = installed.deviceProfile()
         val integrity = withContext(Dispatchers.IO) { verifier.checkIntegrity(files) }
-        suspend fun context(packageName: String?) = VerificationContext(
-            expectedPackageName = target.expectedPackageName,
-            // A megbízható forrás (katalógus / build) és a helyben rögzített aláíró KÜLÖN feltétel (C. 19.).
-            pinnedSignerCerts = target.pinnedSignerCerts,
-            storedSignerCerts = packageName?.let { storedPins(it) }.orEmpty(),
-            minVersionCode = target.minVersionCode,
-            installed = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } },
-            device = device,
-            allowSystemVerifiedSplits = target.allowSystemVerifiedSplits,
-        )
+        suspend fun context(packageName: String?): VerificationContext {
+            val installedInfo = packageName?.let { withContext(Dispatchers.IO) { installed.get(it) } }
+            return VerificationContext(
+                expectedPackageName = target.expectedPackageName,
+                // A megbízható forrás (katalógus / build) és a helyben rögzített aláíró KÜLÖN feltétel (C. 19.).
+                pinnedSignerCerts = target.pinnedSignerCerts,
+                storedSignerCerts = packageName?.let { storedPins(it) }.orEmpty(),
+                minVersionCode = target.minVersionCode,
+                installed = installedInfo,
+                device = device,
+                allowSystemVerifiedSplits = target.allowSystemVerifiedSplits,
+                // Visszajátszás elleni jelzés nem telepített alkalmazásnál (SIG-07).
+                previouslyInstalledVersionCode = if (installedInfo == null) packageName?.let { highestSeenVersionCode(it) } else null,
+            )
+        }
         var report = withContext(Dispatchers.IO) { verifier.checkSignature(files, integrity, context(target.expectedPackageName)) }
         // Ha a csomagnév csak az APK-ból derült ki, a telepített példánnyal és a rögzített aláíróval is össze kell vetni.
         val actualPackage = report.facts?.packageName

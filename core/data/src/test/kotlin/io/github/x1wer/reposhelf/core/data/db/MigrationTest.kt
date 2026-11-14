@@ -85,7 +85,7 @@ class MigrationTest {
             assertEquals("aa", dao.pin("com.example")?.certsSha256)
             dao.upsertNotification(NotificationLogEntity("update:7", "release:1", 1))
             assertEquals("release:1", dao.notification("update:7")?.stateHash)
-            assertEquals(6, db.openHelper.readableDatabase.version)
+            assertEquals(7, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -105,7 +105,7 @@ class MigrationTest {
             assertEquals("aa", db.trackedAppDao().pin("com.example")?.certsSha256)
             assertEquals("release:2", db.trackedAppDao().notification("update:1")?.stateHash)
             db.safetyDao().insertHistory(UpdateHistoryEntity(trackedAppId = 1, appName = "A", packageName = "com.example", fromVersionName = "1", fromVersionCode = 1, toVersionName = "2", toVersionCode = 2, atMillis = 5, outcome = "SUCCESS", failureCode = null, failureMessage = null, method = "MANUAL"))
-            assertEquals(6, db.openHelper.readableDatabase.version)
+            assertEquals(7, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -128,7 +128,7 @@ class MigrationTest {
             }
             assertEquals(null, store.read("a"), "a felső korlát fölött a legrégebbi törlődik")
             assertEquals("{}", store.read("c")?.payload)
-            assertEquals(6, db.openHelper.readableDatabase.version)
+            assertEquals(7, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -152,7 +152,29 @@ class MigrationTest {
             assertNull(tracked.pin("com.beemdevelopment.aegis"))
             tracked.upsertPin(SignerPinEntity("com.beemdevelopment.aegis", "ab", "FIRST_INSTALL_VIA_US", 1, null))
             assertEquals("ab", tracked.pin("com.beemdevelopment.aegis")?.certsSha256)
-            assertTrue(db.openHelper.readableDatabase.version == 6)
+            assertTrue(db.openHelper.readableDatabase.version == 7)
+        } finally {
+            db.close()
+            file.delete()
+        }
+    }
+
+    @Test
+    fun version6_migratesTo7_keepingPinsWithoutAHighestVersionYet() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val file = context.getDatabasePath("migration-test-6.db").apply { parentFile?.mkdirs(); delete() }
+        createVersion(file, 6) { db ->
+            db.execSQL("INSERT INTO signer_pin (packageName, certsSha256, source, pinnedAtMillis, lastVerifiedAtMillis) VALUES ('com.example', 'aa', 'EXISTING_INSTALL', 1, 2)")
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, file.path).build()
+        try {
+            val dao = db.trackedAppDao()
+            val pin = assertNotNull(dao.pin("com.example"))
+            assertEquals("aa", pin.certsSha256)
+            assertNull(pin.highestVersionCode, "a meglévő pin legnagyobb verziókódja az első megfigyeléskor töltődik ki")
+            dao.upsertPin(pin.copy(highestVersionCode = 42))
+            assertEquals(42L, dao.pin("com.example")?.highestVersionCode)
+            assertEquals(7, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()
@@ -187,7 +209,7 @@ class MigrationTest {
             db.catalogDao().clearCatalog()
             assertNull(db.catalogDao().state())
             assertNull(db.catalogDao().byId("aegis"))
-            assertEquals(6, db.openHelper.readableDatabase.version)
+            assertEquals(7, db.openHelper.readableDatabase.version)
         } finally {
             db.close()
             file.delete()

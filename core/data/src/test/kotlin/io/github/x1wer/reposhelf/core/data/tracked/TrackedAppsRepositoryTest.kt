@@ -280,6 +280,30 @@ class TrackedAppsRepositoryTest {
         // Érvényes kulcsrotáció utáni frissítés: az új tanúsítvány hozzáadódik, a régi megmarad.
         repository.recordInstall(id, null, ref("owner/app"), null, release(11, "v1.1", asset(2)), InstallOutcome.Verified("com.example", 11, "1.1", listOf("aa", "bb")))
         assertEquals(listOf("aa", "bb"), repository.pinnedSigners("com.example"))
+        // A legnagyobb, ezen a készüléken látott verziókód (SIG-07) a telepítéssel nő.
+        assertEquals(11L, repository.highestSeenVersionCode("com.example"))
+    }
+
+    @Test
+    fun highestSeenVersion_followsTheInstalledApp_andSurvivesUninstall(): Unit = runBlocking {
+        seedCatalog(catalogEntry("aegis", "beemdevelopment/Aegis", 6, "com.beemdevelopment.aegis"))
+        val catalogApp = assertNotNull(assertNotNull(db.catalogDao().byId("aegis")).toModelOrNull())
+        installedApps["com.beemdevelopment.aegis"] = InstalledAppInfo("com.beemdevelopment.aegis", 81, "3.4.2", listOf("C6DB"))
+        repository.followCatalogApp(catalogApp)
+        assertEquals(81L, repository.highestSeenVersionCode("com.beemdevelopment.aegis"))
+
+        // Máshonnan frissítve: a megfigyelés növeli; egy későbbi kisebb érték nem csökkenti.
+        installedApps["com.beemdevelopment.aegis"] = InstalledAppInfo("com.beemdevelopment.aegis", 83, "3.4.4", listOf("C6DB"))
+        repository.refreshInstalledStates()
+        assertEquals(83L, repository.highestSeenVersionCode("com.beemdevelopment.aegis"))
+        installedApps["com.beemdevelopment.aegis"] = InstalledAppInfo("com.beemdevelopment.aegis", 82, "3.4.3", listOf("C6DB"))
+        repository.refreshInstalledStates()
+        assertEquals(83L, repository.highestSeenVersionCode("com.beemdevelopment.aegis"))
+
+        // Eltávolítás után is megmarad.
+        installedApps.remove("com.beemdevelopment.aegis")
+        repository.refreshInstalledStates()
+        assertEquals(83L, repository.highestSeenVersionCode("com.beemdevelopment.aegis"))
     }
 
     @Test

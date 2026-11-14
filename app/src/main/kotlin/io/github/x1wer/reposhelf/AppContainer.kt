@@ -171,6 +171,7 @@ class AppContainer(private val context: Context) {
             installed = installedPackages,
             initiator = InstallInitiator(PackageInstallerGateway(context) { settingsState.value.requestUpdateOwnership }),
             storedPins = trackedApps::pinnedSigners,
+            highestSeenVersionCode = trackedApps::highestSeenVersionCode,
         )
     }
 

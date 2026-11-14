@@ -10,6 +10,7 @@ import androidx.room.withTransaction
 import io.github.x1wer.reposhelf.core.apk.CheckStatus
 import io.github.x1wer.reposhelf.core.apk.DeviceProfile
 import io.github.x1wer.reposhelf.core.apk.DownloadedApk
+import io.github.x1wer.reposhelf.core.apk.InstalledAppInfo
 import io.github.x1wer.reposhelf.core.apk.VerificationReport
 import io.github.x1wer.reposhelf.core.data.db.ApkAnalysisEntity
 import io.github.x1wer.reposhelf.core.data.db.AppDatabase
@@ -473,10 +474,16 @@ class TrackedAppsRepository(
         }
         val pin = dao.pin(outcome.packageName)
         if (pin == null) {
-            dao.upsertPin(SignerPinEntity(outcome.packageName, outcome.signerHistory.joinToString(","), PinSource.FIRST_INSTALL_VIA_US.name, now, now))
+            dao.upsertPin(
+                SignerPinEntity(
+                    outcome.packageName, outcome.signerHistory.joinToString(","), PinSource.FIRST_INSTALL_VIA_US.name, now, now,
+                    highestVersionCode = outcome.versionCode,
+                ),
+            )
         } else {
             val merged = (pin.certsSha256.split(',').filter { it.isNotEmpty() } + outcome.signerHistory).distinct()
-            dao.upsertPin(pin.copy(certsSha256 = merged.joinToString(","), lastVerifiedAtMillis = now))
+            val highest = maxOf(pin.highestVersionCode ?: outcome.versionCode, outcome.versionCode)
+            dao.upsertPin(pin.copy(certsSha256 = merged.joinToString(","), lastVerifiedAtMillis = now, highestVersionCode = highest))
         }
         return id
     }
@@ -490,7 +497,7 @@ class TrackedAppsRepository(
             val pkg = row.packageName ?: continue
             val info = withContext(Dispatchers.IO) { installed.get(pkg) } ?: continue
             if (!row.everInstalled) dao.update(row.copy(everInstalled = true))
-            pinExistingInstall(pkg, info.signingHistory)
+            pinExistingInstall(pkg, info)
         }
     }
 
@@ -580,14 +587,30 @@ class TrackedAppsRepository(
         return InstalledVersion(info.versionCode, info.versionName, ours)
     }
 
-    /** A máshonnan (nem általunk) telepített példány aláírójának rögzítése, ha még nincs rögzített aláíró. */
-    private suspend fun pinExistingInstall(packageName: String, history: List<String>? = null) {
-        if (dao.pin(packageName) != null) return
-        val signers = history ?: withContext(Dispatchers.IO) { installed.get(packageName) }?.signingHistory ?: return
+    /**
+     * A máshonnan (nem általunk) telepített példány aláírójának rögzítése, ha még nincs rögzített aláíró; és a
+     * telepített példány verziókódjának megjegyzése, ha nagyobb az eddig látottnál (SIG-07).
+     */
+    private suspend fun pinExistingInstall(packageName: String, known: InstalledAppInfo? = null) {
+        val info = known ?: withContext(Dispatchers.IO) { installed.get(packageName) } ?: return
+        val pin = dao.pin(packageName)
+        if (pin != null) {
+            if ((pin.highestVersionCode ?: Long.MIN_VALUE) < info.versionCode) dao.upsertPin(pin.copy(highestVersionCode = info.versionCode))
+            return
+        }
+        val signers = info.signingHistory
         if (signers.isEmpty()) return
         val now = clock.millis()
-        dao.upsertPin(SignerPinEntity(packageName, signers.joinToString(",") { it.lowercase() }, PinSource.EXISTING_INSTALL.name, now, now))
+        dao.upsertPin(
+            SignerPinEntity(
+                packageName, signers.joinToString(",") { it.lowercase() }, PinSource.EXISTING_INSTALL.name, now, now,
+                highestVersionCode = info.versionCode,
+            ),
+        )
     }
+
+    /** A csomag ezen a készüléken valaha látott legnagyobb verziókódja (SIG-07). */
+    suspend fun highestSeenVersionCode(packageName: String): Long? = dao.pin(packageName)?.highestVersionCode
 
     private suspend fun rowForCatalog(app: CatalogApp): TrackedAppEntity? =
         dao.byCatalogId(app.id)

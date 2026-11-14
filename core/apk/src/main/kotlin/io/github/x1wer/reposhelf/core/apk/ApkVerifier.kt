@@ -49,6 +49,11 @@ data class VerificationContext(
      * Alapértelmezés: nem (a saját frissítés csak önálló, teljesen ellenőrzött APK-t fogad el).
      */
     val allowSystemVerifiedSplits: Boolean = false,
+    /**
+     * A csomag ezen a készüléken valaha látott legnagyobb verziókódja (a rögzített aláíró mellett tárolva, SIG-07).
+     * Csak akkor számít, ha a csomag most nincs telepítve: a régebbi állomány ilyenkor figyelmeztetést kap.
+     */
+    val previouslyInstalledVersionCode: Long? = null,
 )
 
 enum class Check { SIZE, SHA256, PROVIDER_DIGEST, APK_STRUCTURE, SIGNATURE, SIGNER_IDENTITY, PACKAGE_NAME, VERSION_CODE, MIN_SDK, TARGET_SDK, ABI, SPLIT_SET }
@@ -249,6 +254,10 @@ class ApkVerifier(private val inspector: ApkInspector) {
             context.minVersionCode != null && facts.versionCode < context.minVersionCode -> {
                 compatibility += CheckItem(Check.VERSION_CODE, CheckStatus.FAILED, "${facts.versionCode} < ${context.minVersionCode}")
                 findings += Finding(FindingKind.BELOW_MIN_VERSION, Severity.CRITICAL)
+            }
+            installed == null && context.previouslyInstalledVersionCode != null && facts.versionCode < context.previouslyInstalledVersionCode -> {
+                compatibility += CheckItem(Check.VERSION_CODE, CheckStatus.WARNING, "${facts.versionCode} < ${context.previouslyInstalledVersionCode}")
+                findings += Finding(FindingKind.OLDER_THAN_PREVIOUS_INSTALL, Severity.WARNING, context.previouslyInstalledVersionCode.toString())
             }
             installed != null && facts.versionCode == installed.versionCode -> {
                 compatibility += CheckItem(Check.VERSION_CODE, CheckStatus.WARNING, facts.versionCode.toString())

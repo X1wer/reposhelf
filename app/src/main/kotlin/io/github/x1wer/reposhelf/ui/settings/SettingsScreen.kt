@@ -163,6 +163,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel(factory = SettingsVi
 
             Section(stringResource(R.string.self_section))
             SelfUpdateSection(container, settings.selfUpdateCheck) { v -> viewModel.update { it.copy(selfUpdateCheck = v) } }
+
+            Section(stringResource(R.string.about_section))
+            AboutSection()
         }
     }
 }
