@@ -13,8 +13,8 @@ The release workflow (`.github/workflows/release.yml`) publishes the section who
 
 ### Changed
 
-- The built-in catalog lists the maintainer's own Android app (YTDLP Studio) instead of the ten sample entries
-  (catalog serial 3).
+- The built-in catalog lists the maintainer's own Android apps (FülesÉbresztő, YTDLP Studio) instead of the ten sample
+  entries (catalog serial 4).
 - Release notes: hand-wrapped CHANGELOG lines are joined, links to repository files point to the tagged version, and a
   "Verification" section lists the signing certificate fingerprint and the SHA-256 sums of the APKs.
 
