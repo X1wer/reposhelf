@@ -8,8 +8,8 @@
 Hatály: a RepoShelf Android-alkalmazás (a GitHub- és az F-Droid-változat is), 0.1.0-s és újabb verziók.
 Utolsó módosítás: 2026-11-14.
 
-> A tájékoztató az alkalmazás tényleges, a forráskóddal összevetett működését írja le. Jogász még nem nézte át; az első
-> nyilvános kiadás előtt ez ajánlott.
+> A tájékoztató az alkalmazás tényleges, a forráskóddal összevetett működését írja le. Jogász még nem nézte át; ez
+> ajánlott.
 
 ## Összefoglalás
 

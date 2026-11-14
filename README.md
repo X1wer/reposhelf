@@ -77,12 +77,13 @@ repackage or modify APKs.
 
 ## Installing RepoShelf
 
-There is no published release yet. Once the first version is released:
+The files are linked under [Download](#download) above.
 
-- **GitHub Releases** will be the primary channel. Each release will contain the signed APKs and a `SHA256SUMS` file.
-  The release is a draft until the maintainer reviews and publishes it.
-- An **F-Droid** build variant exists (`io.github.x1wer.reposhelf.fdroid`, without self-update), but the app has not
-  been submitted to F-Droid.
+- **GitHub Releases** is the primary channel. Each release contains the two signed APKs, a `SHA256SUMS` file and the
+  third-party license notices. Releases are built and signed by the protected release workflow and published by the
+  maintainer after review.
+- The **F-Droid** build variant (`io.github.x1wer.reposhelf.fdroid`, without self-update) is attached to every release,
+  but the app has not been submitted to F-Droid.
 - RepoShelf is **not** planned for Google Play: Play's policies do not allow an app store to use the install permission.
 
 You will need to allow RepoShelf to install apps ("Install unknown apps") the first time you install something with it.

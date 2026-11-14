@@ -9,7 +9,7 @@ Applies to: the RepoShelf Android app (both the GitHub and the F-Droid build), v
 Last updated: 2026-11-14.
 
 > This policy describes the app as it is actually implemented (checked against the source code). It has not yet been
-> reviewed by a lawyer; such a review is recommended before the first public release.
+> reviewed by a lawyer; such a review is recommended.
 
 ## Summary
 
