@@ -30,14 +30,19 @@ Tartalom:
 **Feltételek:** Android 9 vagy újabb, valamint szabad tárhely a RepoShelfnek (az APK kb. 5 MB) és a letöltendő
 alkalmazásoknak.
 
-A RepoShelf APK-ként, a GitHub Releases oldalán jelenik meg. *Nyilvános kiadás még nincs; ez a fejezet azt írja le, hogyan
-fog működni a telepítés.*
+A RepoShelf APK-ként, a GitHub Releases oldalán érhető el: **[legújabb kiadás](https://github.com/X1wer/reposhelf/releases/latest)** (a 0.1.0-s verzió
+2026-11-14-én jelent meg). Az alapváltozat fájlja `RepoShelf-vX.Y.Z.apk`, a saját frissítés nélküli változaté
+`RepoShelf-vX.Y.Z-fdroid.apk`.
 
 1. Töltsd le az APK-t a kiadás oldaláról. Minden kiadásban van egy `SHA256SUMS` fájl is; ha szeretnéd, vesd össze vele a
    letöltött fájl ellenőrzőösszegét.
 2. Nyisd meg az APK-t. Az Android engedélyt kér, hogy a böngésződ vagy fájlkezelőd alkalmazást telepíthessen
    („Ismeretlen alkalmazások telepítése”) – csak annak az egy alkalmazásnak add meg.
 3. Hagyd jóvá a telepítést az Android ablakában.
+
+Az APK-kat a RepoShelf release-kulcsa írja alá (a tanúsítvány SHA-256 ujjlenyomata:
+`7aa8f53bc27116f891e8539e8f0914918356bbb918e6a0261360552e0d67b3d7`); a RepoShelf saját magát csak ezzel a kulccsal
+aláírt frissítésre frissíti.
 
 Két változat van: az alap (GitHub-) változat, amely saját magát is frissítheti, és az F-Droid-változat
 (`io.github.x1wer.reposhelf.fdroid`) saját frissítés nélkül. A kettő külön alkalmazás, nem frissítik egymást. Az

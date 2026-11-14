@@ -23,7 +23,7 @@ project, so there is no guaranteed response time. Do not include personal data o
 
 | Version | Supported |
 |---|---|
-| 0.1.x (in development, not yet released) | security fixes go into the next release |
+| 0.1.x (current release) | yes – security fixes go into the next release |
 
 Only the latest release receives security fixes. RepoShelf can update itself (GitHub build, opt-in), and the release
 process refuses to publish an APK not signed with the expected key.
