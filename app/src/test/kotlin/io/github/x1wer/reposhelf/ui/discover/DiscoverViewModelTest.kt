@@ -86,21 +86,31 @@ class DiscoverViewModelTest {
         }
         assertEquals(loaded.status.appCount, loaded.results.size, "szöveg nélkül a teljes katalógus látszik")
 
-        viewModel.onQueryChange("pipe")
-        val searched = withTimeout(15_000) { viewModel.uiState.first { it.query == "pipe" && it.results.size == 1 } }
-        assertEquals("NewPipe", searched.results.single().name)
+        // Szó belsejében lévő részleges egyezés a beépített katalógus egy valódi bejegyzésére (a tartalomtól függetlenül):
+        // az első szó 2–4. betűje (pl. „YTDLP Studio” → „tdl”).
+        val target = loaded.results.first()
+        val firstWord = target.name.lowercase().takeWhile { it.isLetterOrDigit() }
+        assertTrue(firstWord.length >= 4, "a teszthez legalább 4 betűs első szó kell: ${target.name}")
+        val infix = firstWord.substring(1, 4)
+        viewModel.onQueryChange(infix)
+        withTimeout(15_000) { viewModel.uiState.first { it.query == infix && it.results.any { r -> r.id == target.id } } }
 
         // A szűrő azonnal látszik az állapotban, a (késleltetett) keresés eredménye kicsit később: a végállapotot várjuk.
         // Ha a szűrés hibás, a várakozás időtúllépéssel bukik.
-        val expectedSecurity = loaded.results.count { it.category == CatalogCategory.SECURITY }
-        assertTrue(expectedSecurity in 1 until loaded.results.size)
+        val category = target.category
+        val expected = loaded.results.count { it.category == category }
         viewModel.onQueryChange("")
-        viewModel.onCategorySelected(CatalogCategory.SECURITY)
+        viewModel.onCategorySelected(category)
         withTimeout(15_000) {
             viewModel.uiState.first { state ->
-                state.category == CatalogCategory.SECURITY && state.results.size == expectedSecurity &&
-                    state.results.all { it.category == CatalogCategory.SECURITY }
+                state.category == category && state.results.size == expected && state.results.all { it.category == category }
             }
+        }
+        // Olyan kategória, amelyben nincs bejegyzés: üres találati lista.
+        val absent = CatalogCategory.entries.firstOrNull { c -> loaded.results.none { it.category == c } }
+        if (absent != null) {
+            viewModel.onCategorySelected(absent)
+            withTimeout(15_000) { viewModel.uiState.first { it.category == absent && !it.isInitializing && it.results.isEmpty() } }
         }
     }
 }

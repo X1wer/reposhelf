@@ -20,9 +20,10 @@ class BundledCatalogTest {
         assertTrue(file.isFile, "Hiányzik a beépített katalógus: ${file.absolutePath}")
         val parsed = assertIs<CatalogParseResult.Parsed>(CatalogParser().parse(file.readBytes()))
         assertTrue(parsed.rejected.isEmpty(), "Hibás bejegyzések: ${parsed.rejected}")
-        assertTrue(parsed.catalog.apps.size in 5..10_000)
+        // A kliens üres katalógust nem fogad el (D-118); a beépített legalább egy bejegyzést tartalmaz.
+        assertTrue(parsed.catalog.apps.size in 1..10_000)
         assertTrue(parsed.catalog.serial >= BuildConfig.MIN_CATALOG_SERIAL)
-        assertTrue(parsed.catalog.apps.all { it.repositoryId != null }, "Minden példabejegyzésnek van repositoryId-je")
+        assertTrue(parsed.catalog.apps.all { it.repositoryId != null }, "Minden bejegyzésnek van repositoryId-je")
     }
 
     /** A beépített katalógus aláírása a buildbe fordított kulccsal érvényes, és bájtra egyezik a katalógusrepóéval. */
