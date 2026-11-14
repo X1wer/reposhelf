@@ -7,8 +7,8 @@
 
 Last updated: 2026-11-14.
 
-> This text has not been reviewed by a lawyer. Having it reviewed by a legal professional is recommended before the first
-> public release, in particular for consumer-protection rules in the countries where RepoShelf is distributed.
+> This text has not been reviewed by a lawyer. Having it reviewed by a legal professional is recommended, in particular
+> for consumer-protection rules in the countries where RepoShelf is distributed.
 
 ## Third-party apps
 

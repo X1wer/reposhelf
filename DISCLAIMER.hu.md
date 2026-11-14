@@ -7,8 +7,8 @@
 
 Utolsó módosítás: 2026-11-14.
 
-> A szöveget jogász még nem nézte át. Az első nyilvános kiadás előtt ajánlott jogi szakemberrel átnézetni, különösen azon
-> országok fogyasztóvédelmi szabályai szempontjából, ahol a RepoShelf elérhető lesz.
+> A szöveget jogász még nem nézte át. Ajánlott jogi szakemberrel átnézetni, különösen azon országok fogyasztóvédelmi
+> szabályai szempontjából, ahol a RepoShelf elérhető.
 
 ## Harmadik féltől származó alkalmazások
 
